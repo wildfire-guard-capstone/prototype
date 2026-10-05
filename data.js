@@ -25,48 +25,64 @@ window.SCENARIO = {
   },
 
   // 산불 목록(UC-SIT-02). 진행 중 1건(실제 사건) + 접수 1건·종료 1건(가상, 목록 시연용)
+  // 상태: 접수 → 진행 중(실측 화선이 처음 저장되면) → 종료. start_time(발생 일시)은 접수 단계에서 비어 있을 수 있고 report_time(신고 접수 일시)은 필수
+  // intake: 기관별 접수 기록(접수 기관·접수 시각·접수 경로) — 상황 보고자가 산불 상황 보고 때 입력
+  // perimeters: 실측 화선 버전 목록(v1, v2 …). status 유효 / 정정됨(정정 제출 시 이전 버전은 '정정됨'으로 보존). 최신 '유효' 버전이 예측의 시작점
   incidents: [
     {
       id: "F-2025-0322-01", name: "의성 안평면 산불", status: "진행 중", real: true,
       addr: "경북 의성군 안평면 괴산리 산61 일원",
       ignition: [128.60226, 36.36565],             // 괴산리 마을 중심(OSM). 실제 발화지 '산61 일원'은 야산 정상부
-      report_time: "2025-03-22T11:24:00+09:00",
-      start_time: "2025-03-22T11:25:00+09:00",
+      start_time: "2025-03-22T11:24:00+09:00",     // 발생 11:24 · 신고 11:25(보도 기준)
+      report_time: "2025-03-22T11:25:00+09:00",
       report_text: "119 신고 — 괴산리 뒷산 정상부 연기·불꽃 목격, 성묘객 실화 추정(보도)",
-      intake: [["의성군(119 공동대응)", "11:24", true], ["경북도 산림재난상황실", "11:31", false], ["남부지방산림청", "11:34", false], ["산림청 중앙산림재난상황실", "11:38", false]],
+      reported_by: "rep01",
+      intake: [
+        { org: "의성군(119 공동대응)", at: "11:25", channel: "119 신고", real: true },
+        { org: "경북도 산림재난상황실", at: "11:31", channel: "상황 전파", real: false },
+        { org: "남부지방산림청", at: "11:34", channel: "상황 전파", real: false },
+        { org: "산림청 중앙산림재난상황실", at: "11:38", channel: "상황 전파", real: false }
+      ],
       official_stage: "초기대응", alert_level: "주의",
-      // 상황 보고자가 입력한 실측 화선(가상 12.7 ha, 발화점 북동쪽으로 진행). 예측은 이 범위를 포함하도록 확장된다
-      actual_polygon: { at: "2025-03-22T11:55:00+09:00", by: "rep01", real: false,
-        ring: [[128.60512,36.36565],[128.60548,36.36691],[128.60428,36.3677],[128.60299,36.36825],[128.60156,36.36815],[128.60071,36.36722],[128.60058,36.36631],[128.60104,36.36565],[128.60138,36.36531],[128.6013,36.36467],[128.60194,36.36451],[128.60254,36.36467],[128.60313,36.36476],[128.60369,36.36509],[128.60512,36.36565]] },
-      field_report: { containment_pct: 0, expected_suppression_hours: null },
+      // 상황 보고자가 입력한 실측 화선 v1(가상 12.7 ha, 발화점 북동쪽으로 진행). 예측은 이 범위를 포함하도록 확장된다
+      perimeters: [
+        { version: 1, status: "유효", at: "2025-03-22T11:55:00+09:00", by: "rep01", source: "지도 그리기", real: false,
+          ring: [[128.60512,36.36565],[128.60548,36.36691],[128.60428,36.3677],[128.60299,36.36825],[128.60156,36.36815],[128.60071,36.36722],[128.60058,36.36631],[128.60104,36.36565],[128.60138,36.36531],[128.6013,36.36467],[128.60194,36.36451],[128.60254,36.36467],[128.60313,36.36476],[128.60369,36.36509],[128.60512,36.36565]] }
+      ],
+      field_report: { expected_suppression_hours: null },   // 예상 진화시간(상황 정정으로 입력)
       evacuation_state: { order_issued: false, cbs_sent: [], completed_villages: [], injuries: [] },
-      ended_at: null
+      ended_at: null, ended_by: null
     },
     {
       id: "F-2025-0322-02", name: "의성 사곡면 산불(가상)", status: "접수", real: false,
       addr: "경북 의성군 사곡면 양지리 일원(가상)",
       ignition: [128.7520, 36.3410],
-      report_time: "2025-03-22T11:52:00+09:00", start_time: null,
+      start_time: null, report_time: "2025-03-22T11:52:00+09:00",
       report_text: "주민 신고 — 논두렁 소각 중 인접 야산으로 연소 확대 의심. 현장 확인 중",
-      intake: [["의성군(119 공동대응)", "11:52", false]],
+      reported_by: "rep01",
+      intake: [{ org: "의성군(119 공동대응)", at: "11:52", channel: "119 신고", real: false }],
       official_stage: "초기대응", alert_level: "주의",
-      actual_polygon: null,
-      field_report: { containment_pct: 0, expected_suppression_hours: null },
+      perimeters: [],
+      risk_scores: { weather: 3.9, terrain: 3.2, fuel: 3.5, infra: 2.6 },
+      field_report: { expected_suppression_hours: null },
       evacuation_state: { order_issued: false, cbs_sent: [], completed_villages: [], injuries: [] },
-      ended_at: null
+      ended_at: null, ended_by: null
     },
     {
       id: "F-2025-0321-01", name: "의성 점곡면 산불(가상)", status: "종료", real: false,
       addr: "경북 의성군 점곡면 서변리 일원(가상)",
       ignition: [128.7250, 36.4330],
-      report_time: "2025-03-21T13:10:00+09:00", start_time: "2025-03-21T13:05:00+09:00",
+      start_time: "2025-03-21T13:05:00+09:00", report_time: "2025-03-21T13:10:00+09:00",
       report_text: "농산부산물 소각 부주의(추정). 0.3 ha, 지상진화로 당일 진화 완료",
-      intake: [["의성군(119 공동대응)", "13:10", false]],
+      reported_by: "rep01",
+      intake: [{ org: "의성군(119 공동대응)", at: "13:10", channel: "119 신고", real: false }],
       official_stage: "초기대응", alert_level: "관심",
-      actual_polygon: null,
-      field_report: { containment_pct: 100, expected_suppression_hours: 0 },
+      perimeters: [],
+      // 종료된 산불: 진행 중에 저장된 산불별 최대 위험도(요인 점수)를 그대로 보여 준다
+      risk_scores: { weather: 3.4, terrain: 3.0, fuel: 3.2, infra: 2.8 }, risk_max_at: "2025-03-21T14:00:00+09:00",
+      field_report: { expected_suppression_hours: 6 },
       evacuation_state: { order_issued: false, cbs_sent: [], completed_villages: [], injuries: [] },
-      ended_at: "2025-03-21T16:40:00+09:00"
+      ended_at: "2025-03-21T18:40:00+09:00", ended_by: "cmd01"
     }
   ],
 
@@ -95,36 +111,39 @@ window.SCENARIO = {
 
   astronomy: { sunrise: "06:31", sunset: "18:39", note: "의성 2025-03-22 근사값" },
 
-  // 기상(확산 예측·위험도·진화 전략의 입력으로만 사용. 별도 기상 화면은 두지 않음)
+  // 기상(기상청 단기예보 캐시). 통합 상황도 상단에 현재값과 수신 시각을 표시하고, 확산 예측·위험도·진화 전략의 입력으로 쓴다
   weather: {
     real: false,
-    note: "발생 당시 풍속 5.6 m/s(보도)만 실제. 풍향(서남서)은 확산 방향 보도에서 추정, 시계열·습도·기온은 합성.",
+    note: "발생 당시 풍속 5.6 m/s(보도)만 실제. 풍향(서남서)은 확산 방향 보도에서 추정, 시계열·습도·기온·시정은 합성.",
+    source: "기상청 단기예보", base_time: "11:00", received_at: "2025-03-22T11:10:00+09:00",
     warnings: ["건조특보"],
     series: [
-      { t: "12:00", wind_ms: 5.6, wind_dir: 240, rh: 24, temp_c: 19 },
-      { t: "13:00", wind_ms: 6.4, wind_dir: 240, rh: 21, temp_c: 21 },
-      { t: "14:00", wind_ms: 7.1, wind_dir: 245, rh: 19, temp_c: 22 },
-      { t: "15:00", wind_ms: 7.8, wind_dir: 250, rh: 18, temp_c: 22 },
-      { t: "16:00", wind_ms: 7.0, wind_dir: 245, rh: 20, temp_c: 21 },
-      { t: "17:00", wind_ms: 5.9, wind_dir: 240, rh: 26, temp_c: 19 },
-      { t: "18:00", wind_ms: 4.6, wind_dir: 235, rh: 33, temp_c: 16 },
-      { t: "19:00", wind_ms: 3.8, wind_dir: 230, rh: 40, temp_c: 13 },
-      { t: "20:00", wind_ms: 3.2, wind_dir: 225, rh: 46, temp_c: 11 }
+      { t: "12:00", wind_ms: 5.6, wind_dir: 240, rh: 24, temp_c: 19, vis_m: 8000 },
+      { t: "13:00", wind_ms: 6.4, wind_dir: 240, rh: 21, temp_c: 21, vis_m: 6000 },
+      { t: "14:00", wind_ms: 7.1, wind_dir: 245, rh: 19, temp_c: 22, vis_m: 4000 },
+      { t: "15:00", wind_ms: 7.8, wind_dir: 250, rh: 18, temp_c: 22, vis_m: 3000 },
+      { t: "16:00", wind_ms: 7.0, wind_dir: 245, rh: 20, temp_c: 21, vis_m: 4000 },
+      { t: "17:00", wind_ms: 5.9, wind_dir: 240, rh: 26, temp_c: 19, vis_m: 6000 },
+      { t: "18:00", wind_ms: 4.6, wind_dir: 235, rh: 33, temp_c: 16, vis_m: 8000 },
+      { t: "19:00", wind_ms: 3.8, wind_dir: 230, rh: 40, temp_c: 13, vis_m: 9000 },
+      { t: "20:00", wind_ms: 3.2, wind_dir: 225, rh: 46, temp_c: 11, vis_m: 10000 }
     ]
   },
 
   // 산불 위험도(UC-PRED-02): 4요인(기상·지형·연료·인프라) 점수 1~5의 가중평균 → 조건위험도 = 25 × (가중평균 − 1)
   // 요인 점수는 시연값(실서비스는 25개 변수 → 4요인 점수). 결측 변수는 제외하고 계산하며 목록을 함께 표시한다
+  // 산불별 최대 위험도를 저장해(is_max) 종료 후에도 보여 준다. 사건별 요인 점수는 incidents[].risk_scores가 있으면 그것을 쓴다
   risk_model: {
-    grades: [{ name: "낮음", min: 0 }, { name: "보통", min: 51 }, { name: "높음", min: 66 }, { name: "매우 높음", min: 86 }],
+    // 등급 실수 경계: 낮음 ≤50 · 보통 50 초과~65 · 높음 65 초과~85 · 매우 높음 85 초과
+    grades: [{ name: "낮음", max: 50 }, { name: "보통", max: 65 }, { name: "높음", max: 85 }, { name: "매우 높음", max: null }],
     factors: [
-      { key: "weather", name: "기상",   weight: 0.35, score: 4.2, vars: "풍속·상대습도·기온·건조특보(기상청 단기예보)" },
-      { key: "terrain", name: "지형",   weight: 0.30, score: 3.6, vars: "경사·사면 방향·고도(DEM 30 m 격자)" },
-      { key: "fuel",    name: "연료",   weight: 0.25, score: 3.9, vars: "임상·임목 밀도·낙엽층(임상도)" },
-      { key: "infra",   name: "인프라", weight: 0.10, score: 2.4, vars: "도로 접근성·주거 밀집·송전시설 거리" }
+      { key: "weather", name: "기상",   weight: 0.35, score: 4.2, vars: "풍속·상대습도·기온·건조특보(기상청 단기예보)", values: null },
+      { key: "terrain", name: "지형",   weight: 0.30, score: 3.6, vars: "경사·사면 방향·고도(DEM 30 m 격자)", values: "경사 21° · 남서 사면 · 고도 230 m" },
+      { key: "fuel",    name: "연료",   weight: 0.25, score: 3.9, vars: "임상·임목 밀도·낙엽층(임상도)", values: "침엽수림(소나무) · 임목 밀도 높음 · 낙엽층 두꺼움" },
+      { key: "infra",   name: "인프라", weight: 0.10, score: 2.4, vars: "도로 접근성·주거 밀집·송전시설 거리", values: "도로 1.2 km · 주거 밀집 낮음 · 송전선 0.8 km" }
     ],
     missing_vars: ["인프라 · 변전소 거리(한전 자료 미확보)"],
-    note: "등급 구간(낮음 0~50 · 보통 51~65 · 높음 66~85 · 매우 높음 86~100)은 산림청 산불위험예보를 따른다. 시연값 4.2·3.6·3.9·2.4 → 69.1(높음)."
+    note: "기상 값은 기상청 단기예보 캐시, 지형·연료·인프라 값과 요인 점수는 시연값. 시연값 4.2·3.6·3.9·2.4 → 69.1(높음)."
   },
 
   // 합성 확산 모델: 확산속도(km/h) = a + b × 풍속(m/s). 발화점을 뒤쪽 초점으로 하는 타원 + 각도 노이즈
@@ -187,45 +206,47 @@ window.SCENARIO = {
   ],
 
   // 진화자원(UC-ADMIN-02가 관리하는 데이터. 재난 시 자원 현황(UC-SIT-03)과 S3 자원 배분 제안의 공급원). 전부 가상
-  // type: 헬기 | 차량 | 인력   status: 투입 | 대기 | 정비   qty: 인력은 명, 헬기·차량은 1
+  // type: 헬기 | 차량 | 인력   status: 투입 | 대기 | 정비   qty: 인력은 명, 헬기·차량은 1   base: 배치 위치(평소 대기 장소)
+  // 필수 값: 구분·명칭(호출부호)·소속·수량
   resources: [
-    { id: "r01", type: "헬기", name: "KFS-H01", org: "산림항공본부(안동)", qty: 1, status: "투입" },
-    { id: "r02", type: "헬기", name: "KFS-H02", org: "산림항공본부(안동)", qty: 1, status: "투입" },
-    { id: "r03", type: "헬기", name: "KFS-H03", org: "산림항공본부(울진)", qty: 1, status: "투입" },
-    { id: "r04", type: "헬기", name: "KFS-H04", org: "경북도 임차헬기", qty: 1, status: "투입" },
-    { id: "r05", type: "헬기", name: "KFS-A01", org: "산림항공본부(안동)", qty: 1, status: "대기" },
-    { id: "r06", type: "헬기", name: "KFS-A02", org: "산림항공본부(안동)", qty: 1, status: "대기" },
-    { id: "r07", type: "헬기", name: "KFS-A03", org: "산림항공본부(울진)", qty: 1, status: "대기" },
-    { id: "r08", type: "헬기", name: "KFS-A04", org: "산림항공본부(울진)", qty: 1, status: "대기" },
-    { id: "r09", type: "헬기", name: "KFS-A05", org: "경북도 임차헬기", qty: 1, status: "대기" },
-    { id: "r10", type: "헬기", name: "KFS-A06", org: "경북도 임차헬기", qty: 1, status: "대기" },
-    { id: "r11", type: "헬기", name: "KFS-M01", org: "산림항공본부(안동)", qty: 1, status: "정비" },
-    { id: "r12", type: "인력", name: "산불전문진화대 1조", org: "의성군", qty: 20, status: "투입", pos: [128.607, 36.368] },
-    { id: "r13", type: "인력", name: "산불전문진화대 2조", org: "의성군", qty: 20, status: "투입", pos: [128.612, 36.371] },
-    { id: "r14", type: "인력", name: "산불전문진화대 3조", org: "의성군", qty: 20, status: "투입", pos: [128.598, 36.360] },
-    { id: "r15", type: "인력", name: "산불전문진화대 4조", org: "의성군", qty: 20, status: "대기" },
-    { id: "r16", type: "인력", name: "공중진화대 1조", org: "산림항공본부", qty: 15, status: "대기" },
-    { id: "r17", type: "인력", name: "특수진화대 1조", org: "남부지방산림청", qty: 15, status: "대기" },
-    { id: "r18", type: "차량", name: "의성 펌프 1", org: "의성소방서", qty: 1, status: "투입" },
-    { id: "r19", type: "차량", name: "의성 펌프 2", org: "의성소방서", qty: 1, status: "투입" },
-    { id: "r20", type: "차량", name: "의성 물탱크 1", org: "의성소방서", qty: 1, status: "투입" },
-    { id: "r21", type: "차량", name: "의성 물탱크 2", org: "의성소방서", qty: 1, status: "투입" },
-    { id: "r22", type: "차량", name: "안평 119안전센터 펌프", org: "의성소방서", qty: 1, status: "투입" },
-    { id: "r23", type: "차량", name: "산불진화차 1", org: "의성군", qty: 1, status: "투입" },
-    { id: "r24", type: "차량", name: "산불진화차 2", org: "의성군", qty: 1, status: "투입" },
-    { id: "r25", type: "차량", name: "산불진화차 3", org: "의성군", qty: 1, status: "투입" },
-    { id: "r26", type: "차량", name: "안동 펌프 1", org: "안동소방서(응원)", qty: 1, status: "대기" },
-    { id: "r27", type: "차량", name: "안동 물탱크 1", org: "안동소방서(응원)", qty: 1, status: "대기" },
-    { id: "r28", type: "차량", name: "산불진화차 4", org: "의성군", qty: 1, status: "정비" }
+    { id: "r01", type: "헬기", name: "KFS-H01", org: "산림항공본부(안동)", base: "안동 산림항공관리소", qty: 1, status: "투입" },
+    { id: "r02", type: "헬기", name: "KFS-H02", org: "산림항공본부(안동)", base: "안동 산림항공관리소", qty: 1, status: "투입" },
+    { id: "r03", type: "헬기", name: "KFS-H03", org: "산림항공본부(울진)", base: "울진 산림항공관리소", qty: 1, status: "투입" },
+    { id: "r04", type: "헬기", name: "KFS-H04", org: "경북도 임차헬기", base: "의성 임차헬기 계류장", qty: 1, status: "투입" },
+    { id: "r05", type: "헬기", name: "KFS-A01", org: "산림항공본부(안동)", base: "안동 산림항공관리소", qty: 1, status: "대기" },
+    { id: "r06", type: "헬기", name: "KFS-A02", org: "산림항공본부(안동)", base: "안동 산림항공관리소", qty: 1, status: "대기" },
+    { id: "r07", type: "헬기", name: "KFS-A03", org: "산림항공본부(울진)", base: "울진 산림항공관리소", qty: 1, status: "대기" },
+    { id: "r08", type: "헬기", name: "KFS-A04", org: "산림항공본부(울진)", base: "울진 산림항공관리소", qty: 1, status: "대기" },
+    { id: "r09", type: "헬기", name: "KFS-A05", org: "경북도 임차헬기", base: "의성 임차헬기 계류장", qty: 1, status: "대기" },
+    { id: "r10", type: "헬기", name: "KFS-A06", org: "경북도 임차헬기", base: "의성 임차헬기 계류장", qty: 1, status: "대기" },
+    { id: "r11", type: "헬기", name: "KFS-M01", org: "산림항공본부(안동)", base: "안동 산림항공관리소", qty: 1, status: "정비" },
+    { id: "r12", type: "인력", name: "산불전문진화대 1조", org: "의성군", base: "의성군청", qty: 20, status: "투입", pos: [128.607, 36.368] },
+    { id: "r13", type: "인력", name: "산불전문진화대 2조", org: "의성군", base: "의성군청", qty: 20, status: "투입", pos: [128.612, 36.371] },
+    { id: "r14", type: "인력", name: "산불전문진화대 3조", org: "의성군", base: "의성군청", qty: 20, status: "투입", pos: [128.598, 36.360] },
+    { id: "r15", type: "인력", name: "산불전문진화대 4조", org: "의성군", base: "의성군청", qty: 20, status: "대기" },
+    { id: "r16", type: "인력", name: "공중진화대 1조", org: "산림항공본부", base: "안동 산림항공관리소", qty: 15, status: "대기" },
+    { id: "r17", type: "인력", name: "특수진화대 1조", org: "남부지방산림청", base: "남부지방산림청(안동)", qty: 15, status: "대기" },
+    { id: "r18", type: "차량", name: "의성 펌프 1", org: "의성소방서", base: "의성소방서", qty: 1, status: "투입" },
+    { id: "r19", type: "차량", name: "의성 펌프 2", org: "의성소방서", base: "의성소방서", qty: 1, status: "투입" },
+    { id: "r20", type: "차량", name: "의성 물탱크 1", org: "의성소방서", base: "의성소방서", qty: 1, status: "투입" },
+    { id: "r21", type: "차량", name: "의성 물탱크 2", org: "의성소방서", base: "의성소방서", qty: 1, status: "투입" },
+    { id: "r22", type: "차량", name: "안평 119안전센터 펌프", org: "의성소방서", base: "안평 119안전센터", qty: 1, status: "투입" },
+    { id: "r23", type: "차량", name: "산불진화차 1", org: "의성군", base: "의성군청 차고", qty: 1, status: "투입" },
+    { id: "r24", type: "차량", name: "산불진화차 2", org: "의성군", base: "의성군청 차고", qty: 1, status: "투입" },
+    { id: "r25", type: "차량", name: "산불진화차 3", org: "의성군", base: "의성군청 차고", qty: 1, status: "투입" },
+    { id: "r26", type: "차량", name: "안동 펌프 1", org: "안동소방서(응원)", base: "안동소방서", qty: 1, status: "대기" },
+    { id: "r27", type: "차량", name: "안동 물탱크 1", org: "안동소방서(응원)", base: "안동소방서", qty: 1, status: "대기" },
+    { id: "r28", type: "차량", name: "산불진화차 4", org: "의성군", base: "의성군청 차고", qty: 1, status: "정비" }
   ],
 
   // 계정(UC-ADMIN-01이 관리, UC-AUTH-01의 계정 공급원). 전부 가상. 아이디·비밀번호·사용자 구분이 모두 맞아야 진입한다
+  // 권한: 조작(commander)·열람(viewer)·보고(reporter)·관리(admin). 관리 계정은 설치 시 사전 발급, 나머지는 전산 관리자가 발급(아이디·초기 비밀번호는 시스템 생성)
   accounts: [
-    { id: "cmd01",   pw: "1234", name: "통합지휘권자 1", role: "commander", status: "발급", issued: "2025-03-02" },
-    { id: "view01",  pw: "1234", name: "열람자 1(유관기관)", role: "viewer", status: "발급", issued: "2025-03-02" },
-    { id: "view02",  pw: "1234", name: "열람자 2(상급 본부)", role: "viewer", status: "회수", issued: "2025-01-15" },
-    { id: "rep01",   pw: "1234", name: "상황 보고자 1(현장)", role: "reporter", status: "발급", issued: "2025-03-02" },
-    { id: "admin01", pw: "1234", name: "전산 관리자", role: "admin", status: "발급", issued: "2025-01-02" }
+    { id: "cmd01",   pw: "1234", name: "통합지휘권자 1", org: "의성군", role: "commander", status: "발급", issued: "2025-03-02" },
+    { id: "view01",  pw: "1234", name: "열람자 1(유관기관)", org: "의성경찰서", role: "viewer", status: "발급", issued: "2025-03-02" },
+    { id: "view02",  pw: "1234", name: "열람자 2(상급 본부)", org: "경상북도", role: "viewer", status: "회수", issued: "2025-01-15" },
+    { id: "rep01",   pw: "1234", name: "상황 보고자 1(현장)", org: "의성군 산림과", role: "reporter", status: "발급", issued: "2025-03-02" },
+    { id: "admin01", pw: "1234", name: "전산 관리자", org: "의성군 정보통신과", role: "admin", status: "발급", issued: "2025-01-02" }
   ],
 
   // 근거 청크(요약). 원문 비공개이므로 쪽수 + 요약만 둔다

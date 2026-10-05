@@ -208,7 +208,8 @@
   .card { border: 1px solid #c5cad2; border-left: 4px solid #9aa3ad; margin-bottom: 4px; background: #fff; border-radius: 2px; }
   .card.axis-진화 { border-left-color: var(--red); } .card.axis-대피 { border-left-color: var(--blue2); }
   .card.hi { box-shadow: 0 0 0 2px #f0c36d; }
-  .card.changed .head::before { content: "변경"; font-size: 10px; color: #4d2e9c; background: #ece6fb; border: 1px solid #cbbdf0; padding: 0 4px; border-radius: 2px; margin-right: 4px; }
+  .chg-tag { font-size: 10.5px; font-weight: 700; color: #4d2e9c; background: #ece6fb; border: 1px solid #cbbdf0; padding: 0 5px; border-radius: 2px; cursor: pointer; }
+  .chg-tag:hover { background: #ddd2f8; }
   .card .head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; cursor: pointer; background: linear-gradient(#fff, #f2f3f5); }
   .card .head:hover { background: linear-gradient(#fff, #e9ebee); }
   .card .head .nm { flex: 1; font-weight: 700; color: #1e2a36; }
@@ -217,19 +218,19 @@
   .card.open .head .arrow { transform: rotate(90deg); }
   .card .body { display: none; border-top: 1px solid #e0e3e8; padding: 8px; background: #fbfbfc; }
   .card.open .body { display: block; }
+  .card .sum { padding: 0 8px 7px; cursor: pointer; background: linear-gradient(#f2f3f5, #fff 14px); }
   .card .text { padding: 6px 8px; line-height: 1.6; color: #222; background: #fff; border: 1px solid #e0e3e8; border-radius: 2px; }
   .cite { display: inline-block; padding: 0 4px; margin: 0 1px; border-radius: 2px; background: #e3eefc; color: #1a4fb0; font-size: 10.5px; cursor: pointer; border: 1px solid #b7cdf3; vertical-align: 1px; }
   .cite:hover { background: #cfe0fa; }
+  .card .withheld { margin-top: 4px; padding: 4px 8px; font-size: 11.5px; line-height: 1.5; color: #6b6b6b; background: #f4f4f5; border: 1px dashed #cfd3d8; border-radius: 2px; }
+  .card .withheld b { color: #444; font-weight: 600; }
   .card .detail { margin-top: 6px; }
   .card .detail .row { display: grid; grid-template-columns: 54px 1fr; gap: 4px; padding: 3px 0; font-size: 11.5px; line-height: 1.5; border-top: 1px dashed #e0e3e8; }
   .card .detail .row .k { color: #666; }
   .card .detail .ev { display: block; }
   .card .actions { display: flex; gap: 4px; align-items: center; padding-top: 6px; margin-top: 4px; border-top: 1px dashed #e0e3e8; }
   .card .actions button { font-size: 11px; padding: 1px 7px; }
-  .none-toggle { text-align: center; padding: 5px; font-size: 11px; color: #1a4fb0; cursor: pointer; background: #fafafa; }
   #prop-summary { margin-top: 6px; font-size: 11px; color: #444; display: flex; flex-wrap: wrap; gap: 3px 6px; align-items: center; }
-  #prop-actions { display: flex; gap: 4px; margin-top: 6px; }
-  #prop-actions button { flex: 1; justify-content: center; }
   #evidence-drawer { position: absolute; inset: 0; background: #fff; z-index: 3; display: none; flex-direction: column; }
   #evidence-drawer.on { display: flex; }
   #evidence-drawer .hd { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid #bbb; background: #f0f0f0; font-weight: 700; }
@@ -287,6 +288,11 @@
   .form textarea { min-height: 48px; resize: vertical; font-size: 11.5px; }
   .mode-on { background: #fff8e1 !important; border-color: #e0a325 !important; color: #6b4a00 !important; }
   #rep-poly-info { font-size: 11.5px; color: #444; margin: 4px 0; }
+  #rep-perim-cur, #rep-perim-mode { font-size: 11.5px; color: #444; margin: 2px 0 4px; line-height: 1.6; }
+  #rep-perim-mode label { margin-right: 8px; white-space: nowrap; }
+  .intake-add { display: grid; grid-template-columns: 1.3fr 76px 1fr auto; gap: 4px; margin-top: 4px; }
+  .intake-add input { min-width: 0; font-size: 11.5px; }
+  #rep-closed-note { margin: 4px 0; padding: 4px 8px; font-size: 11.5px; color: #555; background: #efefef; border: 1px solid #d0d0d0; }
 
   /* 관리자 화면 */
   #admin-screen { display: none; position: fixed; inset: 0; z-index: 50; background: #eef1f4; flex-direction: column; }
@@ -342,7 +348,7 @@
         <div class="lg-mark"><img src="assets/logo.png" alt="정부 상징"><div><b>산림청</b><span>Korea Forest Service</span></div></div>
         <h2>산불 대응 AI 의사결정 지원 시스템</h2>
         <p>확산 예측 결과를 표준매뉴얼 근거와 연결해 통합지휘권자에게 진화·대피 조치를 제안하는 의사결정 지원 화면입니다.</p>
-        <ul class="lg-feat"><li>발화 정보·실측 화선 입력과 산불 목록 조회</li><li>시간대별 확산 예측·위험도와 통합 상황도</li><li>진화·대피 대응 제안, 근거·이력 조회, AI 질의·정정</li></ul>
+        <ul class="lg-feat"><li>산불 상황 보고(발화 정보·실측 화선)와 발생·접수 정보 조회</li><li>통합 상황도·1시간 간격 확산 예측(P1~P8)·산불 위험도</li><li>진화·대피 대응 제안서, 근거·이력 조회, AI 질의응답·상황 정정</li></ul>
         <div class="lg-status"><span class="dot"></span>시스템 정상 · 시연 시나리오 2025-03-22 의성 안평면</div>
       </div>
       <div class="lg-form">
@@ -350,15 +356,15 @@
         <div class="lg-note">발급받은 계정으로 로그인하십시오. (회원가입 없음)</div>
         <label>아이디<input id="login-id" value="cmd01" autocomplete="off"></label>
         <label>비밀번호<input id="login-pw" type="password" value="1234"></label>
-        <label>사용자 구분<select id="login-role"><option value="commander">통합지휘권자 — 조작·열람</option><option value="viewer">열람자 — 열람만</option><option value="reporter">상황 보고자 — 발화 정보·실측 화선 입력</option><option value="admin">전산 관리자 — 계정·진화자원 관리</option></select></label>
+        <label>사용자 구분<select id="login-role"><option value="commander">통합지휘권자 — 조작</option><option value="viewer">열람자 — 열람</option><option value="reporter">상황 보고자 — 보고</option><option value="admin">전산 관리자 — 관리</option></select></label>
         <div class="lg-err" id="login-err"></div>
         <button id="login-btn" class="lg-btn">로그인</button>
-        <div class="lg-hint">시연 계정: <code>cmd01</code> 통합지휘권자 · <code>view01</code> 열람자 · <code>rep01</code> 상황 보고자 · <code>admin01</code> 전산 관리자 (비밀번호 <code>1234</code>). 사용자 구분을 바꾸면 그 구분의 시연 계정이 자동으로 채워지며, 아이디·비밀번호·구분이 발급 계정과 맞아야 진입합니다. 5회 연속 실패하면 계정이 잠기고, 30분 동안 조작이 없으면 자동으로 로그아웃됩니다.</div>
+        <div class="lg-hint">시연 계정: <code>cmd01</code> 통합지휘권자 · <code>view01</code> 열람자 · <code>rep01</code> 상황 보고자 · <code>admin01</code> 전산 관리자 (비밀번호 <code>1234</code>). 사용자 구분을 바꾸면 그 구분의 시연 계정이 자동으로 채워지며, 아이디·비밀번호·구분이 발급 계정과 맞아야 진입합니다. 5회 연속 실패하면 계정이 잠기고(전산 관리자만 해제), 세션 토큰은 30분 동안 유효합니다.</div>
       </div>
     </div>
     <div class="lg-notice">
       <div class="lg-notice-hd">공지사항</div>
-      <ul><li><span class="num">2025-03-21</span> 봄철 산불조심기간 대응단계 판단기준 안내 — 2026년 개편 체계(초기대응·확산대응 1·2단계)로 표시됩니다.</li><li><span class="num">2025-03-15</span> 확산 예측 갱신 주기 1시간 · 위험구역 5h/잠재 8h 기준 적용</li><li><span class="num">2025-03-02</span> 시연 데이터 안내 — 화선은 합성 모델, 인구·수용 인원·자원·계정은 가상값입니다.</li></ul>
+      <ul><li><span class="num">2025-03-21</span> 봄철 산불조심기간 대응단계 판단기준 안내 — 2026년 개편 체계(초기대응·확산대응 1·2단계)로 표시됩니다.</li><li><span class="num">2025-03-15</span> 실측 화선 보고 주기 1시간 · 확산 예측은 통합지휘권자가 실행 · 위험구역 5h/잠재 8h 기준 적용</li><li><span class="num">2025-03-02</span> 시연 데이터 안내 — 화선은 합성 모델, 인구·수용 인원·자원·계정은 가상값입니다.</li></ul>
     </div>
   </div>
   <div class="lg-foot"><span>(35208) 대전광역시 서구 청사로 189 정부대전청사 · 산림청</span><span>본 화면은 캡스톤 시연용 목업으로 실제 서비스가 아닙니다.</span><span>Copyright © Korea Forest Service. All rights reserved.</span></div>
@@ -372,8 +378,9 @@
   <div class="menu">
     <button class="red menu-btn on" data-menu="status">산불현황</button>
     <button class="red menu-btn cv-only" data-menu="predict">확산예측</button>
-    <button class="red menu-btn cv-only" data-menu="proposal">대응제안</button>
-    <button class="red menu-btn cv-only" data-menu="history">제안이력</button>
+    <button class="red menu-btn commander-only" data-menu="risk">위험도</button>
+    <button class="red menu-btn commander-only" data-menu="proposal">대응제안</button>
+    <button class="red menu-btn commander-only" data-menu="history">제안이력</button>
   </div>
   <div class="user"><span id="hdr-user">—</span><button id="btn-logout" class="ibtn" title="로그아웃"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 4v16"/></svg></button></div>
 </header>
@@ -412,30 +419,32 @@
           <tr><td class="k">발생 장소</td><td colspan="3" id="ip-addr">—</td></tr>
           <tr><td class="k">신고</td><td colspan="3" id="ip-report">—</td></tr>
           <tr><td class="k">진행상태</td><td id="ip-status">—</td><td class="k">단계</td><td id="ip-stage">—</td></tr>
+          <tr><td class="k">기상</td><td colspan="3" id="ip-weather">—</td></tr>
         </table>
       </div>
       <div class="ip-tabs">
         <button class="ip-tab on" data-tab="status">산불현황</button>
         <button class="ip-tab cv-only" data-tab="predict">확산예측</button>
-        <button class="ip-tab cv-only" data-tab="proposal">대응제안</button>
-        <button class="ip-tab cv-only" data-tab="history">이력</button>
+        <button class="ip-tab commander-only" data-tab="risk">위험도</button>
+        <button class="ip-tab commander-only" data-tab="proposal">대응제안</button>
+        <button class="ip-tab commander-only" data-tab="history">이력</button>
       </div>
 
       <!-- UC-SIT-02 산불 발생·접수 정보 조회 · UC-SIT-01 종료 처리 -->
       <div id="ipt-status" class="ipt on">
-        <div class="sec">산불 목록<span class="r"><label class="small"><input type="checkbox" id="st-all"> 종료 포함</label></span></div>
+        <div class="sec">산불 목록<span class="r" id="st-mode"></span></div>
         <div id="st-list"></div>
-        <div class="sec">발생·접수 정보<i class="info l" data-tip="발생 장소·신고 내용·접수 시각·진행상태. 예측이 아닌 현재 상황입니다. 실측 화선은 상황 보고자가 입력한 폴리곤이며 면적은 그 폴리곤으로 계산합니다."></i></div>
+        <div class="sec">발생·접수 정보<i class="info l" data-tip="발생 장소·신고 내용·접수 시각·진행상태(접수 / 진행 중, 최신 실측 화선 버전·입력 시각). 예측이 아닌 현재 상황입니다. 실측 화선은 상황 보고자가 보고한 폴리곤이며 면적은 그 폴리곤으로 계산합니다."></i></div>
         <div id="st-detail"></div>
         <div class="btnrow" id="st-actions"></div>
       </div>
 
-      <!-- UC-PRED-01 확산 예측 실행·갱신 · UC-SIT-03 시간 재생 · UC-PRED-02 위험도 -->
+      <!-- UC-PRED-01 확산 예측 실행·갱신(통합지휘권자) · UC-SIT-03 시간 재생(통합지휘권자·열람자) -->
       <div id="ipt-predict" class="ipt">
         <div class="btnrow"><button id="btn-predict" class="primary commander-only" style="flex:1;justify-content:center">확산 예측 실행</button></div>
         <div class="progress"><i id="predict-progress"></i></div>
         <div id="predict-status">—</div>
-        <div class="sec">시간별 확산 재생<i class="info l" data-tip="t0부터 +8시간까지 1시간 간격 화선을 지도 위에 재생합니다. 지나간 시각은 채움, 다음 1시간은 점선 윤곽입니다."></i></div>
+        <div class="sec">시간별 확산 재생<i class="info l" data-tip="t0부터 +8시간까지 1시간 간격 확산 범위 P(t)를 지도 위에 채우고 도달한 마을을 강조합니다. 다음 1시간은 점선 윤곽입니다. 예측은 통합지휘권자가 실행하며 자동으로 실행되지 않습니다."></i></div>
         <div id="playbar">
           <button id="btn-play" class="ibtn primary" title="재생"><svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z" fill="currentColor" stroke="none"/></svg></button>
           <button id="btn-stop" class="ibtn" title="처음으로"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" fill="currentColor" stroke="none"/></svg></button>
@@ -443,7 +452,11 @@
           <div id="time-label" class="num">—</div>
           <select id="speed-sel"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select>
         </div>
-        <div class="sec">산불 위험도<i class="info l" data-tip="발화 지점의 조건위험도(0~100)와 등급, 요인별 기여. 기상·지형·연료·인프라 4요인의 점수(1~5)를 가중치 0.35·0.30·0.25·0.10으로 평균해 25×(가중평균−1)로 계산합니다. 결측 변수는 제외하고 계산하며 목록을 함께 표시합니다. 요인 점수는 시연값."></i></div>
+      </div>
+
+      <!-- UC-PRED-02 산불 위험도 확인(통합지휘권자) -->
+      <div id="ipt-risk" class="ipt">
+        <div class="sec">산불 위험도<i class="info l" data-tip="발화 지점의 조건위험도(0~100)와 등급, 요인별 기여. 기상·지형·연료·인프라 4요인의 점수(1~5)를 가중치 0.35·0.30·0.25·0.10으로 평균해 25×(가중평균−1)로 계산합니다. 결측 변수는 제외하고 계산하며 목록을 함께 표시합니다. 산불별 최대 위험도를 저장해 종료 후에도 보여 줍니다. 요인 점수는 시연값."></i></div>
         <div id="risk-box"></div>
       </div>
 
@@ -451,18 +464,17 @@
       <div id="ipt-proposal" class="ipt">
         <div id="prop-meta">—</div>
         <div id="stage-banner"></div>
-        <div class="ptabs"><button class="ptab on" data-axis="진화">진화 제안 (S1~S7)</button><button class="ptab" data-axis="대피">대피 제안 (E1~E7)</button></div>
-        <div class="pfilters"><button class="pfilter on" data-f="all">전체</button><button class="pfilter" data-f="즉시">즉시</button><button class="pfilter" data-f="대기">대기</button><button class="pfilter" data-f="협의">협의</button><button class="pfilter" data-f="요청">요청</button><i class="info l" data-tip="즉시: 책임자 권한으로 지금 시행 · 대기: 조건 충족 시 시행 · 협의: 산림청장과 협의 · 요청: 타 기관에 요청. 매뉴얼에 근거가 없는 수량은 문장 안에 '근거 부족'으로 적습니다."></i></div>
+        <div class="ptabs"><button class="ptab on" data-axis="진화">진화 (S1~S7)</button><button class="ptab" data-axis="대피">대피 (E1~E7)</button></div>
+        <div class="pfilters"><button class="pfilter on" data-f="all">전체</button><button class="pfilter" data-f="즉시">즉시</button><button class="pfilter" data-f="대기">대기</button><button class="pfilter" data-f="협의">협의</button><button class="pfilter" data-f="요청">요청</button><i class="info l" data-tip="즉시: 통합지휘권자 권한으로 지금 시행 · 대기: 조건 충족 시 시행 · 협의: 산림청장과 협의 · 요청: 타 기관에 요청. 항목을 누르면 판정 이유·대상·권한·근거를 펼칩니다. 문장 끝 번호는 근거, '변경' 태그는 직전 버전 대비 변경 내용입니다. 매뉴얼에 근거가 없는 수량·문장은 표시하지 않고 해당 칸에 '근거가 부족하여 표시하지 않았습니다'로 알리며, 이벤트 로그에 '근거 부족'으로 기록합니다."></i></div>
         <div id="cards"></div>
         <div id="prop-summary"></div>
-        <div id="prop-actions" class="commander-only"><button id="btn-regenerate" class="primary">제안 다시 생성</button></div>
       </div>
 
       <!-- UC-PROP-04 제안 이력·변경사항 · 시스템 이벤트 로그 -->
       <div id="ipt-history" class="ipt">
-        <div class="sec">제안 생성 이력<i class="info l" data-tip="제안서가 생성될 때마다 새 판이 남습니다. 「보기」로 그 판을 열람하고 「비교」로 이전 판과 달라진 항목을 확인합니다."></i></div>
+        <div class="sec">제안서 버전 이력<i class="info l" data-tip="예측 갱신(새 실측 화선에 따른 재예측)이나 AI 상황 정정으로 제안서가 생성될 때마다 새 버전이 쌓입니다. 「보기」로 그 버전 전체를 '이전 버전' 표시와 함께 열람하고, 「비교」로 직전 버전 대비 바뀐 항목을 확인합니다."></i></div>
         <div id="hist-runs"></div>
-        <div class="sec">이벤트 로그<i class="info l" data-tip="시스템이 실시간으로 기록한 이벤트(시스템·입력·예측·제안·정정·종료·관리)입니다. 관리 구분은 전산 관리자의 계정·진화자원 변경입니다."></i></div>
+        <div class="sec">이벤트 로그 (읽기 전용)<i class="info l" data-tip="추가만 하고 수정·삭제하지 않는 기록입니다. 구분: 시스템(로그인·로그아웃)·입력·예측·제안·근거 부족·정정·종료·관리(전산 관리자의 계정·진화자원 변경)."></i></div>
         <div id="hist-events"></div>
       </div>
 
@@ -470,44 +482,51 @@
     </div>
   </div>
 
-  <!-- 상황 보고자 패널 (UC-INPUT-01 현재 산불 발화 정보 · UC-SIT-02 조회) -->
+  <!-- 상황 보고자: 상황 입력 판 (UC-REPORT-01 산불 상황 보고 · UC-SIT-02 산불 발생·접수 정보 조회) -->
   <div id="rep-panel" class="fpanel">
-    <div class="fhd"><span class="clock">발화 정보 입력</span><i class="info b" data-tip="초기 산불의 발화 위치와 발생 일시를 입력하고, 현재 진행된 실제 산불 범위를 폴리곤으로 입력합니다. 저장하면 산불 목록에 반영되고 통합지휘권자의 예측·제안 입력이 됩니다."></i><span style="flex:1"></span></div>
+    <div class="fhd"><span class="clock">상황 입력 판</span><i class="info b" data-tip="처음 보고할 때 발화 위치·발생 일시·신고 내용·접수 시각·기관별 접수 기록을 입력하면 산불이 '접수' 상태로 생깁니다. 이후 1시간마다 실측 화선(지금 타고 있는 범위)을 폴리곤으로 보고하며, 첫 실측 화선이 저장되면 '진행 중'으로 바뀝니다. 초기대응에서는 화선을 생략할 수 있습니다. 실측 화선이 통합지휘권자의 재예측·제안 재생성의 출발점입니다."></i><span style="flex:1"></span></div>
     <div class="fbody">
-      <div class="sec">산불 목록<span class="r"><label class="small"><input type="checkbox" id="rep-all"> 종료 포함</label></span></div>
+      <div class="sec">산불 목록<span class="r" id="rep-mode"></span></div>
       <div id="rep-list"></div>
-      <div class="sec">발화 정보<span class="r"><button id="rep-new" class="small">＋ 새 산불</button></span></div>
+      <div class="btnrow"><button id="rep-new" class="primary" style="flex:1;justify-content:center">새 산불 보고</button><button id="rep-perim" style="flex:1;justify-content:center" title="선택한 산불의 직전 실측 화선을 불러와 수정 후 새 버전으로 제출">실측 화선 보고</button></div>
+      <div class="sec" id="rep-form-title">발화 정보</div>
+      <div id="rep-closed-note" style="display:none">종료 처리된 산불입니다. 상황 보고를 받지 않습니다.</div>
       <div class="form">
-        <label class="w">산불명<input id="rep-name"></label>
-        <label class="w">발생 장소(주소)<input id="rep-addr"></label>
-        <label>발화 위치 경도<input id="rep-lng" type="number" step="0.00001"></label>
-        <label>발화 위치 위도<input id="rep-lat" type="number" step="0.00001"></label>
+        <label class="w">산불명 *<input id="rep-name"></label>
+        <label class="w">발생 장소(주소) *<input id="rep-addr"></label>
+        <label>발화 위치 경도 *<input id="rep-lng" type="number" step="0.00001"></label>
+        <label>발화 위치 위도 *<input id="rep-lat" type="number" step="0.00001"></label>
         <label class="w"><span></span><button id="rep-pick" style="justify-content:center">지도에서 발화 위치 지정</button></label>
-        <label>발생 일시<input id="rep-start" type="datetime-local"></label>
-        <label>신고 접수 일시<input id="rep-report" type="datetime-local"></label>
+        <label>발생 일시<input id="rep-start" type="datetime-local" title="접수 단계에서는 비워 둘 수 있습니다"></label>
+        <label>신고 접수 일시 *<input id="rep-report" type="datetime-local"></label>
         <label class="w">신고 내용<textarea id="rep-text"></textarea></label>
       </div>
-      <div class="sec">현재 실제 산불 범위(폴리곤)<i class="info l" data-tip="지도에서 꼭짓점을 차례로 눌러 그리고 「그리기 완료」를 누르거나, GeoJSON Polygon 좌표를 붙여 넣습니다."></i></div>
+      <div class="sec">기관별 접수 기록<i class="info l" data-tip="접수 기관·접수 시각·접수 경로(119 신고, 상황 전파 등)를 추가합니다."></i></div>
+      <div id="rep-intake"></div>
+      <div class="intake-add"><input id="ik-org" placeholder="접수 기관"><input id="ik-at" type="time"><input id="ik-ch" placeholder="접수 경로(예: 119 신고)"><button id="ik-add">추가</button></div>
+      <div class="sec">실측 화선(폴리곤)<span class="r small muted">초기대응에서는 생략 가능</span><i class="info l" data-tip="지도에서 꼭짓점을 차례로 눌러 그리고 「그리기 완료」를 누르거나, GeoJSON Polygon 좌표를 붙여 넣습니다. 「실측 화선 보고」는 직전 화선을 불러옵니다. 저장하면 새 버전(v2, v3 …)으로 쌓이고, 「정정」을 고르면 이전 버전은 '정정됨'으로 보존됩니다."></i></div>
+      <div id="rep-perim-cur"></div>
       <div class="btnrow"><button id="rep-draw">지도에서 그리기</button><button id="rep-draw-done" disabled>그리기 완료</button><button id="rep-draw-clear">지우기</button><button id="rep-geojson">GeoJSON 붙여넣기</button></div>
-      <div id="rep-poly-info">폴리곤 없음</div>
-      <div class="btnrow" style="margin-top:8px"><button id="rep-save" class="primary" style="flex:1;justify-content:center">저장</button></div>
+      <div id="rep-poly-info">제출할 새 화선 없음</div>
+      <div id="rep-perim-mode"></div>
+      <div class="btnrow" style="margin-top:8px"><button id="rep-save" class="primary" style="flex:1;justify-content:center">저장(제출)</button></div>
     </div>
   </div>
 
   <!-- AI 어시스턴트 (UC-QA-01 질의응답 · UC-QA-02 상황 정정) -->
   <div id="chat-panel" class="fpanel">
-    <div class="fhd"><span class="clock">AI 어시스턴트</span><i class="info b" data-tip="현재 상황·대응 제안·근거를 질문하거나 상황 변화(예: 박곡리 대피 완료, 헬기 6대 투입, 진화율 30%, 대피명령 발령)를 입력하면 확인 후 저장하고 제안을 다시 생성합니다. 답변은 표준매뉴얼 근거만 인용하며, 근거가 없으면 '근거 부족'으로 답합니다. 시연에서는 대본 응답입니다."></i><span style="flex:1"></span><button class="ibtn" id="chat-close">✕</button></div>
+    <div class="fhd"><span class="clock">AI 어시스턴트</span><i class="info b" data-tip="현재 상황·대응 제안·근거를 자연어나 빠른 질문으로 묻습니다(상황·제안은 바뀌지 않음). 현장에서 바뀐 사실(예: 박곡리 대피 완료, 헬기 6대 투입, 예상 진화시간 12시간, 대피명령 발령)은 「상황 정정」으로 입력하면 정정 확인 카드에서 확인 후 저장하고, 예측은 그대로 둔 채 제안서를 다시 만듭니다. 답변은 검색된 표준매뉴얼 근거만 인용하며, 근거가 부족한 답변은 표시하지 않고 그 사실만 알린 뒤 이벤트 로그에 '근거 부족'으로 기록합니다. 시연에서는 대본 응답입니다."></i><span style="flex:1"></span><button class="ibtn" id="chat-close">✕</button></div>
     <div class="fbody">
       <div id="chat-ctx">항목 미지정 — 대응제안 항목의 「질문」으로 항목을 붙일 수 있습니다</div>
       <div id="chat-log"></div>
       <div class="chat-quick" id="chat-quick"></div>
-      <form id="chat-form"><input id="chat-input" placeholder="질문 또는 상황 변화 입력 (예: 박곡리 대피 완료)" autocomplete="off"><button id="btn-chat-send" class="primary">전송</button></form>
+      <form id="chat-form"><button type="button" id="btn-corr" title="상황 변화 입력(정정 확인 후 저장·제안서 재생성)">상황 정정</button><input id="chat-input" placeholder="질문 입력 (상황 변화는 「상황 정정」)" autocomplete="off"><button id="btn-chat-send" class="primary">전송</button></form>
     </div>
   </div>
 
   <!-- 진화자원 현황 (UC-SIT-03) -->
   <div id="left-panel" class="fpanel">
-    <div class="fhd"><span class="clock">진화자원 현황</span><i class="info b" data-tip="전산 관리자가 등록한 진화자원 데이터(UC-ADMIN-02)의 보유·투입·대기·가용 현황입니다. 가용 = 투입 + 대기(정비 제외). 자원 수·호출부호는 가상값."></i><span style="flex:1"></span><button class="ibtn" id="lp-close">✕</button></div>
+    <div class="fhd"><span class="clock">진화자원 현황</span><i class="info b" data-tip="전산 관리자가 관리하는 진화자원 데이터(UC-ADMIN-02)의 헬기·인력·차량 현황입니다. 기본은 「가용만 보기」이며, 끄면 보유·투입·대기까지 모두 표시합니다. 가용 = 투입 + 대기(정비 제외). 자원 수·호출부호는 가상값."></i><span style="flex:1"></span><button class="ibtn" id="lp-close">✕</button></div>
     <div class="fbody" id="lp-body"></div>
   </div>
 
@@ -517,7 +536,7 @@
   <div id="coord">—</div>
 </div>
 
-<!-- 전산 관리자 화면 (UC-ADMIN-01 계정·권한 관리 · UC-ADMIN-02 진화자원 정보 관리) -->
+<!-- 전산 관리자 화면 (UC-ADMIN-01 계정·권한 관리 · UC-ADMIN-02 진화자원 데이터 관리) -->
 <div id="admin-screen">
   <header id="admin-top" style="height:40px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;padding:0 10px">
     <div class="sys" style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:#1c3f88"><img src="assets/logo.png" alt="" style="width:26px;height:26px;object-fit:contain"><span style="color:#17325e;letter-spacing:.08em;font-size:16px">산림청</span><span style="width:1px;height:18px;background:#cdd3da;margin:0 4px"></span>산불 대응 AI 의사결정 지원 시스템 <span style="font-size:10px;font-weight:400;color:#777;border:1px solid #ccc;padding:0 4px;border-radius:2px">평시 관리</span></div>
@@ -526,11 +545,11 @@
   </header>
   <div id="admin-body">
     <div class="abox">
-      <div class="ahd">계정·권한 관리 <span class="uc">UC-ADMIN-01</span><span class="small muted" style="font-weight:400">계정을 발급·회수하고 조작(통합지휘권자)·열람(열람자) 권한을 구분합니다</span></div>
+      <div class="ahd">계정·권한 관리 <span class="uc">UC-ADMIN-01</span><span class="small muted" style="font-weight:400">계정을 발급·회수하고 조작(통합지휘권자)·열람(열람자)·보고(상황 보고자) 권한을 나눕니다. 아이디·초기 비밀번호는 시스템이 만들고, 관리 권한 계정은 설치 시 사전 발급합니다</span></div>
       <div class="abd" id="admin-accounts"></div>
     </div>
     <div class="abox">
-      <div class="ahd">진화자원 정보 관리 <span class="uc">UC-ADMIN-02</span><span class="small muted" style="font-weight:400">보유 헬기·차량·인력을 등록·수정·삭제합니다. 재난 시 자원 현황과 자원 배분 제안의 데이터 공급원</span></div>
+      <div class="ahd">진화자원 데이터 관리 <span class="uc">UC-ADMIN-02</span><span class="small muted" style="font-weight:400">보유 헬기·차량·인력을 등록·수정·삭제합니다(필수: 구분·명칭(호출부호)·소속·수량). 통합 상황도의 진화자원 현황과 다음 대응 제안(S3·S6)의 입력이 됩니다</span></div>
       <div class="abd" id="admin-resources"></div>
     </div>
   </div>

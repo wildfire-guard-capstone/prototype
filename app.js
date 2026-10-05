@@ -1,6 +1,6 @@
 /* =====================================================================
    산불 대응 AI 의사결정 지원 시스템 — 시연 목업 (app.js)
-   확정 유스케이스(UC-AUTH-01, UC-INPUT-01, UC-SIT-01~03, UC-PRED-01~02, UC-PROP-01~04, UC-QA-01~02, UC-ADMIN-01~02) 기준.
+   요구사항분석서 유스케이스(UC-AUTH-01, UC-REPORT-01, UC-SIT-01~03, UC-PRED-01~02, UC-PROP-01~04, UC-QA-01~02, UC-ADMIN-01~02) 기준.
    지도(MapLibre) · 합성 확산 모델 · 규칙 판정 · 대응 제안(진화 7·대피 7) · 근거 열람 · 제안 이력 · AI 어시스턴트(질의·정정, 대본)
    실제 ELMFIRE·RAG·LLM·기상 API는 없다. 모든 판단은 이 파일 안의 규칙과 템플릿이다.
    ===================================================================== */
@@ -19,6 +19,7 @@
   const eul = (w) => josa(w, "을", "를"), eun = (w) => josa(w, "은", "는");
   const tip = (text, cls = "") => `<i class="info ${cls}" data-tip="${esc(text)}"></i>`;
   const ROLE_LABEL = { commander: "통합지휘권자", viewer: "열람자", reporter: "상황 보고자", admin: "전산 관리자" };
+  const PERM_LABEL = { commander: "조작", viewer: "열람", reporter: "보고", admin: "관리" };
 
   // ------------------------------------------------------------------ 시각
   const T0 = new Date(S.meta.now);
@@ -34,6 +35,8 @@
   const SUNSET = parseHM(S.astronomy.sunset), SUNRISE = parseHM(S.astronomy.sunrise);
   const isNight = (d) => d >= SUNSET || d < SUNRISE;
   const hm = (ms) => { const m = Math.round(ms / 60e3); return `${Math.floor(m / 60)}:${pad2(m % 60)}`; };
+  // 근거 부족 비표시: 근거로 뒷받침되지 않는 문장·수량·답변은 출력하지 않고 해당 칸에 이 안내만 보이며, 이벤트 로그에 「근거 부족」으로 남긴다
+  const NO_EVIDENCE = "근거가 부족하여 표시하지 않았습니다.";
   const nowSim = () => new Date(T0.getTime() + (state.loginAt ? Date.now() - state.loginAt : 0));   // 시연 시계: t0 + 로그인 후 경과
 
   // ------------------------------------------------------------------ 상태
@@ -42,12 +45,12 @@
     incId: S.incidents[0].id, inc: {},
     playing: false, timer: null,
     wind: { ms: S.weather.series[0].wind_ms, dir: S.weather.series[0].wind_dir },
-    events: [], chatCtx: null, sat: true, axis: "진화", filter: "all", showNone: { "진화": false, "대피": false },
-    showEnded: false, houses: null, markers: {}, emdLabels: [], crewMarkers: [], lastActive: Date.now(),
-    rep: { editingId: null, pickMode: false, drawMode: false, pts: [], ring: null, showEnded: false }
+    events: [], chatCtx: null, corrMode: false, sat: true, axis: "진화", filter: "all", resAvailOnly: true,
+    listMode: "진행", houses: null, markers: {}, emdLabels: [], crewMarkers: [], tokenExp: null,
+    rep: { editingId: null, pickMode: false, drawMode: false, pts: [], ring: null, ringSource: null, perimMode: "new", intake: [], listMode: "진행" }
   };
   const inc = () => S.incidents.find((i) => i.id === state.incId);
-  const IS = (id = state.incId) => (state.inc[id] = state.inc[id] || { predicted: false, slices: [], t: 0, runs: [], currentRun: null, viewRun: null, runSeq: 0, stale: false });
+  const IS = (id = state.incId) => (state.inc[id] = state.inc[id] || { predicted: false, slices: [], t: 0, runs: [], currentRun: null, viewRun: null, runSeq: 0, stale: false, predPerim: null, riskMax: null });
   const canOperate = () => state.role === "commander";
 
   // ------------------------------------------------------------------ 기하 (원점: 시나리오 첫 사건 발화점, 의성군 전역에서 근사 유효)
@@ -114,7 +117,10 @@
   }
   const buildSlices = (center, wind, actualRing) => Array.from({ length: 8 }, (_, i) => firePolygon(center, i + 1, wind, actualRing));
   function circleRing(center, rM = 150) { const [cx, cy] = toM(center[0], center[1]); const r = []; for (let i = 0; i <= 36; i++) { const a = i / 36 * 2 * Math.PI; r.push(fromM(cx + rM * Math.cos(a), cy + rM * Math.sin(a))); } return r; }
-  const actualRing = (i = inc()) => (i.actual_polygon && i.actual_polygon.ring) || null;
+  // 실측 화선 버전(UC-REPORT-01): 최신 '유효' 버전이 현재 화선이며 예측의 시작점이다(없으면 발화점)
+  const curPerim = (i = inc()) => { const v = (i.perimeters || []).filter((p) => p.status === "유효"); return v.length ? v[v.length - 1] : null; };
+  const actualRing = (i = inc()) => { const p = curPerim(i); return p ? p.ring : null; };
+  const perimTag = (p) => (p ? `v${p.version}` : "없음(발화점)");
   function mulberry(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
   function genHouses() {
     const rnd = mulberry(7), out = [];
@@ -219,11 +225,11 @@
   const vnP = (list) => (list.length ? joinKo(list.map((v) => `${v.name}(P${v.arrival})`)) : "없음");
   const E = (keys) => keys.map((key, i) => ({ k: i + 1, key }));
   function buildProposal(R, I) {
-    const es = I.evacuation_state, rs = R.rs, fr = I.field_report;
+    const es = I.evacuation_state, rs = R.rs;
     const B = [];
     const none = (id) => ({ id, finding: "", status: ["(없음)"], text: "(없음)", targets: [], conflicts: [], evidence: [] });
     const cat = Object.fromEntries(S.catalog.map((c) => [c.id, c]));
-    const push = (b) => { const c = cat[b.id]; B.push({ axis: c.axis, name: c.name, authority: c.authority, targets: [], conflicts: [], ...b }); };
+    const push = (b) => { const c = cat[b.id]; B.push({ axis: c.axis, name: c.name, authority: c.authority, targets: [], conflicts: [], withheld: [], ...b }); };
     { const drivers = R.stageDrivers.join("·");
       const finding = `현재 피해면적 ${R.areaNow ? fmt1(R.areaNow) + " ha(실측 화선)" : "미입력"} / 4요소 판정: ${R.stageFactors.map((f) => `${f.name} ${f.val} → ${f.stage || "판정 제외"}`).join(" / ")} → 가장 높은 단계 ${R.recStage}(${drivers}), 공식 ${R.official}`;
       if (R.stageUp) { let text = `대응단계 판단기준 4요소 중 ${drivers}${hasBatchim(drivers) ? "이" : "가"} ${R.recStage} 기준(${R.recStage === "확산대응 2단계" ? "피해면적 100 ha 이상·평균풍속 7 m/s 이상·예상 진화시간 24시간 이상·주요시설 피해 우려" : "피해면적 10 ha 이상·평균풍속 4 m/s 이상·예상 진화시간 8시간 이상·주택 피해 우려"})에 해당합니다 [1]. 산림청장과 대응단계 격상을 협의하십시오 [2].`; if (R.nextHolder) text += ` 격상되면 지휘권이 ${R.nextHolder}에게 넘어가므로 피해상황·투입 자원·추가 피해 가능성을 인계할 준비를 하십시오 [3].`; push({ id: "S1", finding, status: ["협의"], text, targets: ["산림청장"], evidence: E(["SM-p073", "SM-p022", "SM-p072"]) }); }
@@ -235,8 +241,8 @@
       const order = [g1.length ? joinKo(g1) : null, g2.length ? joinKo(g2) : null, g3[0] || null].filter(Boolean);
       if (order.length) push({ id: "S2", finding, status: ["즉시"], text: `${order.join(" → ")} 순으로 진화 우선지역을 정하십시오 [1]. 인명·국가유산·고압선 피해 여부와 확대 가능성을 우선 판단하십시오 [2].`, targets: order, evidence: E(["SM-p077", "SM-p118"]) });
       else push({ ...none("S2"), finding, evidence: E(["SM-p077"]) }); }
-    { const finding = `투입 헬기 ${rs.heli_deployed}대·지상 ${rs.ground_crew_deployed}명·소방차 ${rs.fire_trucks_deployed}대 / 가용(대기) 헬기 ${rs.heli_available}대·차량 ${rs.trucks_available}대 / 진화율 ${fr.containment_pct}% / 진화구역 후보: 주 확산 방향(${R.spreadDir}) 1순위, 양 측면 2순위 / 소요 산식 없음`;
-      push({ id: "S3", finding, status: ["즉시"], text: `주 확산 방향인 ${R.spreadDir}쪽 구역(${vn(R.immediate)})에 지상진화 자원을 우선 배치하고, 진화전략도에 구역별 진화율을 반영해 재배치하십시오 [1]. 가용 진화헬기 ${rs.heli_available}대를 집중 투입하십시오 [2]. 추가 투입이 필요한 헬기 대수는 매뉴얼에 산정 기준이 없어 근거 부족입니다.`, targets: [`${R.spreadDir} 구역`, "가용 헬기"], evidence: E(["SM-p041", "SM-p077"]) }); }
+    { const finding = `투입 헬기 ${rs.heli_deployed}대·지상 ${rs.ground_crew_deployed}명·소방차 ${rs.fire_trucks_deployed}대 / 가용(대기) 헬기 ${rs.heli_available}대·차량 ${rs.trucks_available}대 / 진화구역 후보: 주 확산 방향(${R.spreadDir}) 1순위, 양 측면 2순위 / 소요 산식 없음`;
+      push({ id: "S3", finding, status: ["즉시"], text: `주 확산 방향인 ${R.spreadDir}쪽 구역(${vn(R.immediate)})에 지상진화 자원을 우선 배치하고, 진화전략도에 구역별 진화율을 반영해 재배치하십시오 [1]. 가용 진화헬기 ${rs.heli_available}대를 집중 투입하십시오 [2].`, targets: [`${R.spreadDir} 구역`, "가용 헬기"], withheld: [{ slot: "추가 투입 헬기 대수", why: "표준매뉴얼에 산정 기준 없음" }], evidence: E(["SM-p041", "SM-p077"]) }); }
     { const finding = `현재 풍속 ${state.wind.ms} m/s(${dirName(state.wind.dir)}풍) / 최대 ${R.maxWind.wind_ms} m/s(${R.maxWind.t}) / 헬기 운용 ${R.heliOkNow ? "가능" : "제한"} / 일몰 ${R.sunset}, t0+5h ${timeAt(5)}(${R.night5 ? "야간 포함" : "주간"})`;
       push({ id: "S4", finding, status: ["즉시"], text: `현재 풍속에서는 헬기 운용이 가능하므로 가용 헬기를 집중 투입하십시오 [1]. ${R.maxWind.t} 전후 풍속이 ${R.maxWind.wind_ms} m/s로 강해지는 시간대에는 지상진화에 집중할 준비를 하고, 일몰(${R.sunset}) 이후 풍속이 잦아드는 시간대에 집중 진화를 지시하십시오 [2].`, targets: ["전 진화자원"], evidence: E(["SM-p077", "SM-p078"]) }); }
     { const finding = `P5 내 주택 ${R.housesP5}동(P8 누적 ${R.housesP8}동) / 송전선 ${R.powerIn ? `P${R.powerIn} 통과` : "범위 밖"} / 취약시설 ${R.careIn.length ? joinKo(R.careIn.map((f) => `${f.name}(P${f.arrival})`)) : "없음"}`;
@@ -247,8 +253,8 @@
     { const finding = `걸친 시·군·구 ${R.crossesSigungu ? "2개 이상" : "1개(의성군)"}, 지휘권 변경 ${R.nextHolder ? "검토(" + R.nextHolder + ")" : "없음"} / 확산 범위 읍면 ${joinKo(R.emdIn5)} / 자원 부족분 산출 불가(소요 기준 없음)`;
       const st = R.immediate.length >= 2 ? ["요청"] : []; if (R.nextHolder) st.unshift("협의");
       let text = R.crossesSigungu ? `확산 범위가 인접 시·군에 걸치므로 지휘권이 시·도지사로 바뀌는지 협의하십시오 [1].` : `확산 범위가 의성군 안에 있어 걸친 행정구역에 따른 지휘권 변경은 없습니다 [1].`;
-      if (R.immediate.length >= 2) text += ` 진화자원이 확산 정도에 미치지 못하면 인접 시·군의 진화자원과 소방·경찰·군의 인력·장비 동원을 요청하고, 산불현장 대책회의에서 기관별 임무를 부여하십시오 [2]. 요청 수량은 소요 기준이 없어 근거 부족입니다.`;
-      push({ id: "S6", finding, status: st.length ? st : ["(없음)"], text: st.length ? text : "(없음)", targets: st.length ? ["인접 시·군", "소방·경찰·군"] : [], evidence: E(["SM-p072", "SM-p022"]) }); }
+      if (R.immediate.length >= 2) text += ` 진화자원이 확산 정도에 미치지 못하면 인접 시·군의 진화자원과 소방·경찰·군의 인력·장비 동원을 요청하고, 산불현장 대책회의에서 기관별 임무를 부여하십시오 [2].`;
+      push({ id: "S6", finding, status: st.length ? st : ["(없음)"], text: st.length ? text : "(없음)", targets: st.length ? ["인접 시·군", "소방·경찰·군"] : [], withheld: R.immediate.length >= 2 ? [{ slot: "동원 요청 수량", why: "표준매뉴얼에 소요 기준 없음" }] : [], evidence: E(["SM-p072", "SM-p022"]) }); }
     { const finding = `진화인력 ${R.crewTotal}개 조 중 P5 내 ${R.crewIn5}개 조 / 퇴로: 풍상측(${dirName(state.wind.dir)}) 도로 확보 / 풍향 급변 없음(예보 ${S.weather.series[0].wind_dir}°→${S.weather.series[8].wind_dir}°)`;
       if (R.crewTotal) push({ id: "S7", finding, status: ["즉시"], text: `P5 안에서 작업 중인 지상진화인력의 위치추적장치 휴대와 진화복·안전장구를 확인하고, 풍상측(${dirName(state.wind.dir)})으로 퇴로를 지정하십시오 [1]. ${R.maxWind.t} 전후 풍속이 최대가 되는 시간대에는 화선 전방(${R.spreadDir})으로의 투입을 제한하십시오 [2].`, targets: [`지상진화인력 ${rs.ground_crew_deployed}명`], evidence: E(["SM-p077", "SM-p118"]) });
       else push({ ...none("S7"), finding, evidence: E(["SM-p077"]) }); }
@@ -303,24 +309,37 @@
     const I = inc(), st = IS();
     const R = computeRules(I, st.slices), blocks = buildProposal(R, I);
     st.runSeq++;
-    const run = { id: `${st.runSeq}판`, seq: st.runSeq, createdAt: nowSim(), reason, R, blocks, summary: summarize(blocks), snapshot: { official_stage: I.official_stage, alert_level: I.alert_level } };
+    const run = { id: `버전 ${st.runSeq}`, seq: st.runSeq, createdAt: nowSim(), reason, R, blocks, summary: summarize(blocks), perim: st.predPerim, snapshot: { official_stage: I.official_stage, alert_level: I.alert_level } };
     const prev = st.currentRun;
     run.changed = prev ? blocks.filter((b) => { const p = prev.blocks.find((x) => x.id === b.id); return !p || p.text !== b.text || p.status.join() !== b.status.join() || p.finding !== b.finding; }).map((b) => b.id) : [];
     st.runs.push(run); st.currentRun = run; st.viewRun = run;
-    addEvent("제안", `대응 제안 ${run.id} 생성 (${reason}) — 즉시 ${run.summary["즉시"]}·대기 ${run.summary["대기"]}·협의 ${run.summary["협의"]}·요청 ${run.summary["요청"]}${run.changed.length ? ` · 변경 ${run.changed.length}건` : ""}`);
+    addEvent("제안", `대응 제안 ${run.id} 생성(${reason})${run.changed.length ? ` · 변경 ${run.changed.length}건` : ""}`);
+    blocks.forEach((b) => b.withheld.forEach((w) => addEvent("근거 부족", `${run.id} ${b.name} — ${w.slot} 비표시(${w.why})`)));
     renderAll();
     return run;
   }
 
   // ------------------------------------------------------------------ 위험도 (UC-PRED-02)
   // 조건위험도 = 25 × (요인 점수(1~5) 가중평균 − 1). 기상 0.35 · 지형 0.30 · 연료 0.25 · 인프라 0.10
-  function computeRisk() {
-    const RM = S.risk_model, fs = RM.factors;
+  // 등급 실수 경계: 낮음 ≤50 · 보통 50 초과~65 · 높음 65 초과~85 · 매우 높음 85 초과
+  const gradeOf = (score) => (S.risk_model.grades.find((g) => g.max == null || score <= g.max) || {}).name;
+  const wx = () => S.weather.series[0];
+  const wxText = (w = wx()) => `${dirName(w.wind_dir)}풍 ${w.wind_ms} m/s · 습도 ${w.rh}% · 기온 ${w.temp_c}℃ · 시정 ${w.vis_m >= 1000 ? fmt1(w.vis_m / 1000) + " km" : w.vis_m + " m"}`;
+  function computeRisk(I = inc()) {
+    const RM = S.risk_model, sc = I.risk_scores || {};
+    const fs = RM.factors.map((f) => ({ ...f, score: sc[f.key] != null ? sc[f.key] : f.score, values: f.key === "weather" ? `풍속 ${wx().wind_ms} m/s · 풍향 ${wx().wind_dir}° · 습도 ${wx().rh}% · 기온 ${wx().temp_c}℃ · ${S.weather.warnings.join("·")}` : f.values }));
     const wsum = fs.reduce((a, f) => a + f.weight, 0);
     const mean = fs.reduce((a, f) => a + f.score * f.weight, 0) / wsum;
     const score = Math.round(25 * (mean - 1) * 10) / 10;
-    const grade = RM.grades.slice().reverse().find((g) => score >= g.min).name;
-    return { score, grade, mean, factors: fs.map((f) => ({ ...f, contrib: Math.round(f.score * f.weight / wsum * 100) / 100 })), missing: RM.missing_vars || [] };
+    return { score, grade: gradeOf(score), mean, factors: fs.map((f) => ({ ...f, contrib: Math.round(f.score * f.weight / wsum * 100) / 100 })), missing: RM.missing_vars || [] };
+  }
+  // 산불별 최대 위험도: 진행 중이면 계산해 더 높을 때만 갱신·저장, 종료된 산불은 저장된 값을 그대로 쓴다
+  function riskOf(I = inc()) {
+    const st = IS(I.id);
+    if (I.status === "종료") { if (!st.riskMax) st.riskMax = { ...computeRisk(I), at: I.risk_max_at ? new Date(I.risk_max_at) : null }; return { cur: null, max: st.riskMax }; }
+    const cur = computeRisk(I);
+    if (!st.riskMax || cur.score > st.riskMax.score) st.riskMax = { ...cur, at: nowSim() };
+    return { cur, max: st.riskMax };
   }
 
   // ------------------------------------------------------------------ 아이콘 · 지도
@@ -441,7 +460,7 @@
     if (!map || !map.getSource("fire-cum")) return;
     const I = inc(), st = IS(), t = st.t, sl = st.slices, ar = actualRing(I);
     map.getSource("f0").setData(fc([poly(ar || circleRing(I.ignition, 120), {})]));
-    if (state.role === "reporter" || !st.predicted || !sl.length) { ["fire-cum", "fire-past", "fire-next", "risk"].forEach((id) => map.getSource(id).setData(EMPTY)); S.villages.forEach((v) => state.markers[`v:${v.id}`].getElement().classList.remove("burned")); S.shelters.forEach((s) => state.markers[`s:${s.id}`].getElement().classList.remove("unsafe")); return; }
+    if (state.role === "reporter" || !st.predicted || !sl.length || I.status === "종료") { ["fire-cum", "fire-past", "fire-next", "risk"].forEach((id) => map.getSource(id).setData(EMPTY)); S.villages.forEach((v) => state.markers[`v:${v.id}`].getElement().classList.remove("burned")); S.shelters.forEach((s) => state.markers[`s:${s.id}`].getElement().classList.remove("unsafe")); return; }
     map.getSource("fire-cum").setData(fc(t === 0 ? [] : [poly(sl[t - 1], { t })]));
     map.getSource("fire-past").setData(fc(sl.slice(0, Math.max(0, t - 1)).map((r, i) => poly(r, { t: i + 1 }))));
     map.getSource("fire-next").setData(fc(t < 8 ? [poly(sl[t], { t: t + 1 })] : []));
@@ -466,9 +485,10 @@
   function applySat() { if (!map || !map.getLayer("sat")) return; map.setLayoutProperty("sat", "visibility", state.sat ? "visible" : "none"); $("#ts-sat").classList.toggle("on", state.sat); document.body.classList.toggle("satmap", state.sat); }
   function fitAll() {
     const st = IS(), I = inc();
-    const pts = st.predicted && st.slices.length ? st.slices[7] : actualRing(I) || circleRing(I.ignition, 4000);
+    const showPred = st.predicted && st.slices.length && I.status !== "종료";
+    const pts = showPred ? st.slices[7] : actualRing(I) || circleRing(I.ignition, 4000);
     const b = pts.reduce((bb, p) => bb.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
-    if (st.predicted) S.shelters.forEach((s) => b.extend([s.lng, s.lat]));
+    if (showPred) S.shelters.forEach((s) => b.extend([s.lng, s.lat]));
     const w = map.getContainer().clientWidth, h = map.getContainer().clientHeight;
     const rightOpen = $("#info-panel").classList.contains("on") || $("#rep-panel").classList.contains("on"), leftOpen = $("#left-panel").classList.contains("on");
     map.fitBounds(b, { padding: w > 1000 && h > 600 ? { top: 70, bottom: 60, left: leftOpen ? 350 : 40, right: rightOpen ? 490 : 80 } : 30, maxZoom: 13.5, duration: 800 });
@@ -483,12 +503,13 @@
   function setT(t) {
     const st = IS(); st.t = Math.max(0, Math.min(8, t)); $("#time-slider").value = st.t;
     const d = addH(T0, st.t);
-    $("#time-label").innerHTML = st.predicted ? `${hhmm(d)}<small>t0+${st.t}h${isNight(d) ? " · 야간" : ""}</small>` : `${hhmm(T0)}<small>예측 전</small>`;
+    $("#time-label").innerHTML = inc().status === "종료" ? `${hhmm(T0)}<small>종료 — 예측 미표시</small>` : st.predicted ? `${hhmm(d)}<small>t0+${st.t}h${isNight(d) ? " · 야간" : ""}</small>` : `${hhmm(T0)}<small>예측 전</small>`;
     $("#ip-clock").textContent = `${ymd(d)} ${hhmm(d)}`;
     updateFireLayers();
   }
   function play() {
-    if (!IS().predicted) { toast("먼저 확산 예측을 실행해야 재생할 수 있습니다."); return; }
+    if (inc().status === "종료") { toast("종료된 산불은 예측 범위(P1~P8)를 표시하지 않습니다."); return; }
+    if (!IS().predicted) { toast(canOperate() ? "먼저 확산 예측을 실행해야 재생할 수 있습니다." : "통합지휘권자가 확산 예측을 실행하면 재생할 수 있습니다."); return; }
     if (state.playing) { pause(); return; }
     if (IS().t >= 8) setT(0);
     state.playing = true; $("#btn-play").innerHTML = svg('<path d="M8 5h3v14H8zM13 5h3v14h-3z" fill="currentColor" stroke="none"/>');
@@ -496,31 +517,35 @@
     state.timer = setTimeout(step, 600);
   }
   function pause() { state.playing = false; clearTimeout(state.timer); $("#btn-play").innerHTML = svg('<path d="M7 5l12 7-12 7z" fill="currentColor" stroke="none"/>'); }
-  function runPrediction(auto) {
+  // UC-PRED-01: 통합지휘권자가 누를 때만 실행(자동 실행 없음). 누른 시점의 최신 실측 화선(없으면 발화점)·기상·자원 상태 기준
+  function runPrediction() {
     const I = inc(), st = IS();
-    if (!canOperate() && !auto) return;
+    if (!canOperate()) return;
     if (I.status === "종료") { toast("종료된 산불에는 예측을 실행하지 않습니다."); return; }
+    if (state.predicting) return;
     pause();
     const btn = $("#btn-predict"), bar = $("#predict-progress"), sl = $("#predict-status");
     btn.disabled = true; state.predicting = true; let p = 0;
-    const steps = ["입력 검증(발화점·t0·실측 화선)", "기상 자료 조회", "확산 모델 실행", "시간대별 결과 검증", "규칙 판정·제안 생성"];
+    const steps = ["입력 검증(발화점·실측 화선·t0)", "기상청 단기예보 조회", "확산 모델 실행", "P1~P8 누적성 검증", "규칙 판정·제안 생성"];
     const tick = () => {
-      p += auto ? 34 : 9; bar.style.width = Math.min(100, p) + "%"; sl.textContent = steps[Math.min(steps.length - 1, Math.floor(p / 21))] + "…";
-      if (p < 100) setTimeout(tick, auto ? 60 : 180);
+      p += 9; bar.style.width = Math.min(100, p) + "%"; sl.textContent = steps[Math.min(steps.length - 1, Math.floor(p / 21))] + "…";
+      if (p < 100) setTimeout(tick, 180);
       else {
-        state.wind = { ms: S.weather.series[0].wind_ms, dir: S.weather.series[0].wind_dir };
-        st.slices = buildSlices(I.ignition, state.wind, actualRing(I)); st.predicted = true; st.stale = false; st.predictedAt = nowSim();
+        state.wind = { ms: wx().wind_ms, dir: wx().wind_dir };
+        const perim = curPerim(I);
+        st.slices = buildSlices(I.ignition, state.wind, perim ? perim.ring : null); st.predicted = true; st.stale = false; st.predictedAt = nowSim();
+        st.predPerim = perim ? { version: perim.version, area: ringAreaHa(perim.ring), at: perim.at } : null;
         btn.disabled = false; state.predicting = false;
-        addEvent("예측", `확산 예측 갱신 — 5h ${fmt0(ringAreaHa(st.slices[4]))} ha, 8h ${fmt0(ringAreaHa(st.slices[7]))} ha, 주 방향 ${dirName(state.wind.dir + 180)}`);
-        setT(0); generateProposal("예측 갱신");
-        if (!auto) { toast("예측이 끝나 진화·대피 대응 제안이 생성되었습니다."); fitAll(); }
+        addEvent("예측", `확산 예측 갱신 — 5h ${fmt0(ringAreaHa(st.slices[4]))} ha, 8h ${fmt0(ringAreaHa(st.slices[7]))} ha, 주 방향 ${dirName(state.wind.dir + 180)} · 기준 실측 화선 ${perimTag(perim)}`);
+        setT(0); const run = generateProposal("예측 갱신");
+        toast(`예측이 끝나 진화·대피 대응 제안서를 생성했습니다(${run.id}).`); fitAll();
       }
     };
     tick();
   }
 
   // ------------------------------------------------------------------ 이벤트 로그 · 토스트 · 모달
-  // 이벤트 로그(추가 전용). 구분: 시스템·입력·예측·제안·정정·종료·관리. 시스템·관리 이벤트는 사건 없이(inc null) 기록
+  // 이벤트 로그(추가 전용). 구분: 시스템·입력·예측·제안·근거 부족·정정·종료·관리. 시스템·관리 이벤트는 사건 없이(inc null) 기록
   function addEvent(kind, text) {
     state.events.push({ t: hhmmss(nowSim()), kind, text, inc: kind === "시스템" || kind === "관리" ? null : state.incId, user: state.user });
     renderHistory();
@@ -539,8 +564,10 @@
   // ------------------------------------------------------------------ 패널 제어
   function showPanel(id, on) { const p = $(id); p.classList.toggle("on", on == null ? !p.classList.contains("on") : on); syncVtabs(); }
   function syncVtabs() { $$(".vtab").forEach((v) => v.classList.toggle("on", $({ fire: state.role === "reporter" ? "#rep-panel" : "#info-panel", legend: "#legend-panel" }[v.dataset.v]).classList.contains("on"))); }
+  const COMMANDER_TABS = ["risk", "proposal", "history"];
   function showTab(tab) {
     if (state.role === "reporter") { showPanel("#rep-panel", true); return; }
+    if (!canOperate() && COMMANDER_TABS.includes(tab)) tab = "status";
     showPanel("#info-panel", true);
     $$(".ip-tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
     $$(".ipt").forEach((p) => p.classList.toggle("on", p.id === `ipt-${tab}`));
@@ -558,63 +585,89 @@
   // ------------------------------------------------------------------ 렌더링: 헤더 · 산불현황(UC-SIT-02) · 종료(UC-SIT-01)
   const stBadge = (s) => `<span class="badge b-${s === "진행 중" ? "진행" : s}">${esc(s)}</span>`;
   const fmtIso = (s) => (s ? ymdhm(new Date(s)) : "—");
+  const fmtHM = (s) => (s ? hhmm(new Date(s)) : "—");
   function renderHeader() {
-    const I = inc();
-    $("#hdr-user").innerHTML = `<b>${esc(state.user)}</b> · ${ROLE_LABEL[state.role] || ""}`;
+    const I = inc(), w = wx();
+    $("#hdr-user").innerHTML = `<b>${esc(state.user)}</b> · ${ROLE_LABEL[state.role] || ""}(${PERM_LABEL[state.role] || ""})`;
     $("#ip-name").textContent = `| ${I.name}`;
     $("#ip-addr").textContent = I.addr;
-    $("#ip-report").textContent = `${hhmm(new Date(I.report_time))} ${I.report_text}`;
+    $("#ip-report").textContent = `${fmtHM(I.report_time)} ${I.report_text}`;
     $("#ip-status").innerHTML = `${stBadge(I.status)} <span class="muted small">접수 ${fmtIso(I.report_time)}</span>`;
     $("#ip-stage").innerHTML = `<b>${esc(I.official_stage)}</b> · ${esc(I.alert_level)}`;
+    // 기상청 단기예보 캐시: 호출에 실패해도 마지막으로 받은 값과 수신 시각을 함께 표시한다(UC-SIT-03 E1)
+    $("#ip-weather").innerHTML = `${esc(wxText(w))}${S.weather.warnings.length ? ` · <b style="color:var(--red)">${esc(S.weather.warnings.join("·"))}</b>` : ""}<br><span class="small muted">${esc(S.weather.source)} ${esc(S.weather.base_time)} 발표 · 수신 ${fmtIso(S.weather.received_at)} · ${esc(w.t)} 기준</span>`;
   }
-  function incidentListHTML(showEnded, selId, onSelect) {
-    const list = S.incidents.filter((i) => showEnded || i.status !== "종료" || i.id === selId);
-    const ongoing = S.incidents.filter((i) => i.status !== "종료").length;
-    return (ongoing ? "" : '<div class="muted small" style="padding:6px 4px;border:1px dashed #ccc;margin-bottom:4px;text-align:center">진행 중인 산불이 없습니다.</div>') + `<table class="grid"><thead><tr><th>산불</th><th style="width:78px">접수</th><th style="width:60px">상태</th></tr></thead><tbody>${list.map((i) => `<tr class="clickable ${i.id === selId ? "sel" : ""}" data-inc="${i.id}"><td><b>${esc(i.name)}</b><br><span class="small muted">${esc(i.addr)}</span></td><td class="num small">${esc(ymdhm(new Date(i.report_time)).slice(5))}</td><td style="text-align:center">${stBadge(i.status)}</td></tr>`).join("")}</tbody></table>${list.length || !ongoing ? "" : '<div class="muted small" style="padding:6px">표시할 산불이 없습니다.</div>'}`;
+  // 산불 목록(UC-SIT-02): 기본은 접수·진행 중 목록, 「종료」로 바꾸면 종료 처리된 산불 목록
+  function incidentListHTML(mode, selId) {
+    const list = S.incidents.filter((i) => (mode === "종료" ? i.status === "종료" : i.status !== "종료"));
+    const empty = mode === "종료" ? "종료 처리된 산불이 없습니다." : "진행 중인 산불이 없습니다.";
+    return list.length ? `<table class="grid"><thead><tr><th>산불 · 발생 장소</th><th style="width:78px">발생 시각</th><th style="width:60px">상태</th></tr></thead><tbody>${list.map((i) => `<tr class="clickable ${i.id === selId ? "sel" : ""}" data-inc="${i.id}"><td><b>${esc(i.name)}</b><br><span class="small muted">${esc(i.addr)}</span></td><td class="num small">${i.start_time ? esc(ymdhm(new Date(i.start_time)).slice(5)) : '<span class="muted">미확인</span>'}</td><td style="text-align:center">${stBadge(i.status)}</td></tr>`).join("")}</tbody></table>` : `<div class="muted small" style="padding:8px 4px;border:1px dashed #ccc;text-align:center">${empty}</div>`;
   }
+  const listModeHTML = (mode, key) => `<span class="seg">${["진행", "종료"].map((m) => `<button data-${key}="${m}" class="${mode === m ? "on" : ""}">${m === "진행" ? "접수·진행 중" : "종료"}</button>`).join("")}</span>`;
+  const intakeHTML = (I) => (I.intake || []).length ? I.intake.map((r) => `<span style="display:inline-block;margin:1px 8px 1px 0">${esc(r.org)} <b>${esc(r.at)}</b> <span class="small muted">${esc(r.channel || "")}</span></span>`).join("") : "—";
+  const perimHTML = (I) => { const p = curPerim(I), n = (I.perimeters || []).length; return p ? `<b>${perimTag(p)}</b> · ${fmt1(ringAreaHa(p.ring))} ha · 꼭짓점 ${p.ring.length - 1}개 <span class="small muted">(${fmtIso(p.at)} ${esc(p.by || "")} ${esc(p.source || "")}${n > 1 ? ` · 이전 버전 ${n - 1}개 보존` : ""})</span>` : '<span class="muted">미보고 — 초기대응에서는 생략 가능(발화점 기준 예측)</span>'; };
   function renderStatus() {
     const I = inc(), st = IS();
-    $("#st-list").innerHTML = incidentListHTML(state.showEnded, I.id);
+    $("#st-mode").innerHTML = listModeHTML(state.listMode, "lm");
+    $$("#st-mode [data-lm]").forEach((b) => (b.onclick = () => { state.listMode = b.dataset.lm; renderStatus(); }));
+    $("#st-list").innerHTML = incidentListHTML(state.listMode, I.id);
     $$("#st-list tr.clickable").forEach((tr) => (tr.onclick = () => selectIncident(tr.dataset.inc, true)));
-    const ap = I.actual_polygon;
     $("#st-detail").innerHTML = `<table class="grid">
       <tr><td class="k">발생 장소</td><td colspan="3">${esc(I.addr)}<br><span class="small muted num">발화 위치 ${I.ignition[1].toFixed(5)}, ${I.ignition[0].toFixed(5)}</span></td></tr>
-      <tr><td class="k">발생 일시</td><td>${fmtIso(I.start_time)}</td><td class="k">신고 접수</td><td>${fmtIso(I.report_time)}</td></tr>
+      <tr><td class="k">발생 일시</td><td>${I.start_time ? fmtIso(I.start_time) : '<span class="muted">미확인</span>'}</td><td class="k">신고 접수</td><td>${fmtIso(I.report_time)}</td></tr>
       <tr><td class="k">신고 내용</td><td colspan="3">${esc(I.report_text)}</td></tr>
-      <tr><td class="k">접수 기관</td><td colspan="3">${(I.intake || []).map(([o, t]) => `<span style="display:inline-block;margin:1px 8px 1px 0">${esc(o)} <b>${t}</b></span>`).join("") || "—"}</td></tr>
-      <tr><td class="k">진행상태</td><td>${stBadge(I.status)}${I.ended_at ? ` <span class="small muted">종료 ${fmtIso(I.ended_at)}</span>` : ""}</td><td class="k">공식 단계</td><td>${esc(I.official_stage)} · ${esc(I.alert_level)}</td></tr>
-      <tr><td class="k">실측 화선</td><td colspan="3">${ap ? `${fmt1(ringAreaHa(ap.ring))} ha · ${ap.ring.length - 1}개 꼭짓점 <span class="small muted">(${fmtIso(ap.at)} ${esc(ap.by || "")} 입력)</span>` : '<span class="muted">미입력 — 상황 보고자 입력 대기</span>'}</td></tr>
-      <tr><td class="k">진화율</td><td>${I.field_report.containment_pct}%</td><td class="k">예측</td><td>${st.predicted ? `${fmt0(ringAreaHa(st.slices[4]))} ha(5h) · ${fmt0(ringAreaHa(st.slices[7]))} ha(8h)${st.stale ? ' <span class="badge b-대기">재예측 필요</span>' : ""}` : '<span class="muted">예측 전</span>'}</td></tr>
+      <tr><td class="k">접수 기록</td><td colspan="3">${intakeHTML(I)}</td></tr>
+      <tr><td class="k">진행상태</td><td>${stBadge(I.status)}${I.ended_at ? ` <span class="small muted">종료 ${fmtIso(I.ended_at)}${I.ended_by ? " · " + esc(I.ended_by) : ""}</span>` : ""}</td><td class="k">공식 단계</td><td>${esc(I.official_stage)} · ${esc(I.alert_level)}</td></tr>
+      <tr><td class="k">실측 화선</td><td colspan="3">${perimHTML(I)}</td></tr>
+      ${I.status === "종료" ? "" : `<tr><td class="k">예측</td><td colspan="3">${st.predicted ? `${fmt0(ringAreaHa(st.slices[4]))} ha(5h) · ${fmt0(ringAreaHa(st.slices[7]))} ha(8h) <span class="small muted">기준 실측 화선 ${st.predPerim ? "v" + st.predPerim.version : "없음(발화점)"}</span>${st.stale ? ' <span class="badge b-대기">재예측 필요</span>' : ""}` : '<span class="muted">예측 전</span>'}</td></tr>`}
     </table>`;
     const ac = $("#st-actions"); ac.innerHTML = "";
-    if (canOperate() && I.status !== "종료") { const b = document.createElement("button"); b.className = "primary"; b.textContent = "진화 완료 · 종료 처리"; b.onclick = openEndModal; ac.appendChild(b); }
-    if (I.status === "종료") ac.innerHTML = `<span class="small muted">종료된 산불입니다. 예측·제안은 이력으로만 열람합니다.</span>`;
+    // UC-SIT-01: 「종료 처리」는 통합지휘권자에게, '진행 중' 산불에만 보인다(이미 종료된 산불에는 표시하지 않음)
+    if (canOperate() && I.status === "진행 중") { const b = document.createElement("button"); b.className = "primary"; b.textContent = "종료 처리"; b.onclick = openEndModal; ac.appendChild(b); }
+    if (I.status === "종료") ac.innerHTML = `<span class="small muted">종료된 산불입니다. 제안서·이력은 조회만 가능합니다.</span>`;
+    else if (I.status === "접수") ac.innerHTML = `<span class="small muted">접수 상태 — 상황 보고자가 실측 화선을 처음 보고하면 '진행 중'으로 바뀝니다.</span>`;
   }
   function openEndModal() {
     const I = inc();
     if (state.predicting) { toast("실행이 끝난 뒤 종료할 수 있습니다."); return; }
-    openModal("발화 종료 처리", `<p><b>${esc(I.name)}</b>을(를) 진화 완료로 보고 <b>종료</b> 상태로 전환합니다.</p><table class="grid"><tr><td class="k">종료 시각</td><td>${ymdhm(nowSim())}</td></tr><tr><td class="k">진화율</td><td>${I.field_report.containment_pct}% → 100%</td></tr><tr><td class="k">영향</td><td>예측 실행·상황 정정이 중단되고 제안은 이력으로만 열람됩니다. 산불 목록에서는 「종료 포함」을 켜야 보입니다.</td></tr></table>`,
-      [{ label: "취소" }, { label: "종료 처리", cls: "primary", onClick: () => { I.status = "종료"; I.ended_at = nowSim().toISOString(); I.field_report.containment_pct = 100; pause(); addEvent("종료", `${I.name} 종료 처리(진화 완료)`); toast("종료 상태로 전환했습니다."); renderAll(); } }]);
+    if (I.status !== "진행 중") return;
+    openModal("발화 종료 처리", `<p><b>${esc(I.name)}</b>의 진화가 끝났으면 <b>종료</b> 상태로 바꿉니다.</p><p style="color:var(--red);font-weight:700">종료하면 상황 보고·예측 실행·상황 정정이 막힙니다.</p><table class="grid"><tr><td class="k">종료 시각</td><td>${ymdhm(nowSim())}</td></tr><tr><td class="k">처리자</td><td>${esc(state.user)}(${ROLE_LABEL[state.role]})</td></tr><tr><td class="k">이후</td><td>진행 중 목록에서 빠져 「종료」 목록으로 옮겨지고, 제안서·이력은 조회만 가능합니다.</td></tr></table>`,
+      [{ label: "취소" }, { label: "확인", cls: "primary", onClick: () => { I.status = "종료"; I.ended_at = nowSim().toISOString(); I.ended_by = state.user; pause(); setT(0); addEvent("종료", `${I.name} 종료 처리`); toast("산불을 종료 상태로 바꿨습니다."); renderAll(); } }]);
   }
 
   // ------------------------------------------------------------------ 렌더링: 확산예측 · 위험도
   function renderPredict() {
-    const I = inc(), st = IS();
-    const btn = $("#btn-predict"); btn.textContent = st.predicted ? "다시 예측" : "확산 예측 실행"; btn.disabled = I.status === "종료";
-    if (!st.predicted) $("#predict-status").textContent = I.status === "종료" ? "종료된 산불 — 예측 미실행" : `발화점 ${I.ignition[1].toFixed(4)}, ${I.ignition[0].toFixed(4)} · t0 ${hhmm(T0)} · ${dirName(state.wind.dir)}풍 ${state.wind.ms} m/s${actualRing(I) ? ` · 실측 화선 ${fmt1(burnedAreaHa(I))} ha 반영` : " · 실측 화선 없음"}`;
-    else $("#predict-status").textContent = `완료(${hhmm(st.predictedAt)}) · 5h ${fmt0(ringAreaHa(st.slices[4]))} ha · 8h ${fmt0(ringAreaHa(st.slices[7]))} ha · 주 방향 ${dirName(state.wind.dir + 180)}${st.stale ? " · 발화 정보가 갱신되어 다시 예측하십시오" : ""}`;
-    $("#predict-progress").style.width = st.predicted ? "100%" : "0%";
-    const rk = computeRisk(), gcls = rk.grade.replace(/\s/g, "");
-    $("#risk-box").innerHTML = `<div class="risk"><div class="gauge"><div class="v g-${gcls}">${rk.score.toFixed(1)}</div><div class="g g-${gcls}">${rk.grade}</div><div class="k">조건위험도 0~100</div></div><div class="fac">${rk.factors.map((f) => `<div class="row"><span title="${esc(f.vars)}">${esc(f.name)}</span><span class="bar"><i style="width:${Math.round(f.score / 5 * 100)}%"></i></span><span class="n">${f.score.toFixed(1)}/5 · 가중치 ${f.weight.toFixed(2)}</span></div>`).join("")}</div></div><div class="small muted">조건위험도 = 25 × (요인 점수 가중평균 ${rk.mean.toFixed(2)} − 1). 등급 낮음 0~50 · 보통 51~65 · 높음 66~85 · 매우 높음 86~100. 요인 점수는 시연값.${rk.missing.length ? `<br>결측 변수(제외하고 계산): ${esc(rk.missing.join(", "))}` : ""}</div>`;
+    const I = inc(), st = IS(), cp = curPerim(I);
+    const btn = $("#btn-predict"); btn.textContent = st.predicted ? "다시 예측" : "확산 예측 실행"; btn.disabled = I.status === "종료" || !!state.predicting;
+    const basis = cp ? `최신 실측 화선 ${perimTag(cp)}(${fmt1(ringAreaHa(cp.ring))} ha, ${fmtHM(cp.at)} 보고)` : "실측 화선 없음 — 발화점에서 예측";
+    if (I.status === "종료") $("#predict-status").textContent = "종료된 산불 — 예측 범위(P1~P8)를 표시하지 않습니다";
+    else if (!st.predicted) $("#predict-status").textContent = `${basis} · t0 ${hhmm(T0)} · ${dirName(wx().wind_dir)}풍 ${wx().wind_ms} m/s`;
+    else $("#predict-status").textContent = `완료(${hhmm(st.predictedAt)}) · 기준 실측 화선 ${st.predPerim ? "v" + st.predPerim.version : "없음(발화점)"} · 5h ${fmt0(ringAreaHa(st.slices[4]))} ha · 8h ${fmt0(ringAreaHa(st.slices[7]))} ha · 주 방향 ${dirName(state.wind.dir + 180)}${st.stale ? ` · 새 실측 화선(${cp ? perimTag(cp) : "발화 정보"})이 보고되어 「다시 예측」이 필요합니다` : ""}`;
+    $("#predict-progress").style.width = st.predicted && I.status !== "종료" ? "100%" : "0%";
+  }
+  // UC-PRED-02 산불 위험도: 발화 지점의 기상·지형·연료·인프라 값 → 조건위험도(0~100)·등급·요인별 기여, 산불별 최대 위험도 저장
+  function renderRisk() {
+    if (!canOperate()) { $("#risk-box").innerHTML = ""; return; }
+    const I = inc(), { cur, max } = riskOf(I), rk = cur || max, gcls = rk.grade.replace(/\s/g, "");
+    const head = I.status === "종료" ? `<div class="small" style="margin-bottom:4px"><span class="badge b-종료">종료</span> 저장된 산불별 최대 위험도를 표시합니다${max.at ? `(${ymdhm(max.at)} 저장)` : ""}.</div>` : "";
+    $("#risk-box").innerHTML = `${head}<div class="risk"><div class="gauge"><div class="v g-${gcls}">${rk.score.toFixed(1)}</div><div class="g g-${gcls}">${rk.grade}</div><div class="k">${cur ? "현재 조건위험도" : "최대 위험도"} 0~100</div></div><div class="fac">${rk.factors.map((f) => `<div class="row"><span title="${esc(f.vars)}">${esc(f.name)}</span><span class="bar"><i style="width:${Math.round(f.score / 5 * 100)}%"></i></span><span class="n">${f.score.toFixed(1)}/5 · 가중치 ${f.weight.toFixed(2)}</span></div>`).join("")}</div></div>
+      <div class="sec">요인별 입력 값<i class="info l" data-tip="기상은 기상청 단기예보(발화 지점), 지형·연료·인프라는 공공데이터 격자 값입니다. 지형·연료·인프라 값과 요인 점수는 시연값입니다."></i></div>
+      <table class="grid">${rk.factors.map((f) => `<tr><td class="k">${esc(f.name)}</td><td class="small">${esc(f.values || f.vars)}</td></tr>`).join("")}</table>
+      ${cur ? `<div class="small" style="margin-top:6px;padding:4px 6px;border:1px solid var(--line2);background:#fafafa">산불별 최대 위험도 <b class="g-${max.grade.replace(/\s/g, "")}">${max.score.toFixed(1)}(${esc(max.grade)})</b> <span class="muted">· ${max.at ? hhmm(max.at) + " 저장" : ""} · 더 높은 점수가 계산되면 갱신되고 종료 후에도 표시됩니다</span></div>` : ""}
+      <div class="small muted" style="margin-top:6px">조건위험도 = 25 × (요인 점수 가중평균 ${rk.mean.toFixed(2)} − 1). 등급 낮음 ≤50 · 보통 50 초과~65 · 높음 65 초과~85 · 매우 높음 85 초과.${rk.missing.length ? `<br>결측 변수(제외하고 계산): ${esc(rk.missing.join(", "))}` : ""}</div>`;
   }
 
   // ------------------------------------------------------------------ 렌더링: 진화자원 현황(UC-SIT-03)
+  // 진화자원 현황(UC-SIT-03): 기본은 「가용만 보기」 필터(가용 합계와 가용 단위만), 끄면 보유·투입·대기까지 모두 표시
   function renderResources() {
-    const by = resSummary();
-    const rows = S.resources.slice().sort((a, b) => RTYPES.indexOf(a.type) - RTYPES.indexOf(b.type) || (a.status === "투입" ? -1 : 1));
+    const by = resSummary(), only = state.resAvailOnly;
+    const rows = S.resources.filter((r) => !only || r.status !== "정비").sort((a, b) => RTYPES.indexOf(a.type) - RTYPES.indexOf(b.type) || (a.status === "투입" ? -1 : 1));
+    const cols = only ? ["가용"] : ["보유", "투입", "대기", "가용"];
     $("#lp-body").innerHTML = `
-      <div class="cnt"><div class="h">구분</div><div class="h">보유</div><div class="h">투입</div><div class="h">대기</div><div class="h">가용</div>${RTYPES.map((t) => `<div class="h">${t}${t === "인력" ? "(명)" : "(대)"}</div><div><b>${by[t].보유}</b></div><div><b>${by[t].투입}</b></div><div><b>${by[t].대기}</b></div><div><b>${by[t].가용}</b></div>`).join("")}</div>
+      <label class="small" style="display:flex;align-items:center;gap:4px;margin-bottom:6px"><input type="checkbox" id="res-avail" ${only ? "checked" : ""}> 가용만 보기 <span class="muted">(가용 = 투입 + 대기, 정비 제외)</span></label>
+      <div class="cnt" style="grid-template-columns:56px repeat(${cols.length}, 1fr)"><div class="h">구분</div>${cols.map((c) => `<div class="h">${c}</div>`).join("")}${RTYPES.map((t) => `<div class="h">${t}${t === "인력" ? "(명)" : "(대)"}</div>${cols.map((c) => `<div><b>${by[t][c]}</b></div>`).join("")}`).join("")}</div>
       <table class="grid"><thead><tr><th>구분</th><th>명칭·호출부호</th><th>소속</th><th>수량</th><th>상태</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.type)}</td><td>${esc(r.name)}</td><td class="small">${esc(r.org)}</td><td class="num" style="text-align:center">${r.type === "인력" ? r.qty + "명" : "1대"}</td><td class="${r.status === "투입" ? "g" : r.status === "대기" ? "y" : ""}" style="text-align:center">${esc(r.status)}</td></tr>`).join("")}</tbody></table>`;
+    $("#res-avail").onchange = (e) => { state.resAvailOnly = e.target.checked; renderResources(); };
   }
   function renderLegend() {
     const ico = (cls, key) => `<span class="ico-s" style="background:${ICON_COLOR[cls]}">${ICONS[key]}</span>`;
@@ -633,42 +686,44 @@
   const citeHTML = (text, blockId) => esc(text).replace(/\[(\d+)\]/g, (m, k) => `<span class="cite" data-b="${blockId}" data-k="${k}">${k}</span>`);
   const badges = (status) => status.filter((s) => s !== "(없음)").map((s) => `<span class="badge b-${s}">${esc(s)}</span>`).join("");
   function renderProposal() {
-    const st = IS(), run = st.viewRun, isCurrent = run === st.currentRun;
-    $("#prop-meta").innerHTML = run ? `기준 <b>${hhmm(T0)}</b> · 공식 <b>${esc(run.snapshot.official_stage)}</b> · 판정 <b>${esc(run.R.recStage)}</b> · <b>${run.id}</b>(${esc(run.reason)}, ${hhmm(run.createdAt)})${isCurrent ? "" : ' <span class="badge b-없음">이전 판</span> <a href="#" id="prop-latest">최신 판으로</a>'}` : "예측 실행 후 생성됩니다";
+    const st = IS(), run = st.viewRun, isCurrent = run === st.currentRun, closed = inc().status === "종료";
+    $("#prop-meta").innerHTML = run ? `<b>${run.id}</b> · 생성 ${hhmm(run.createdAt)}(${esc(run.reason)}) · 기준 실측 화선 <b>${run.perim ? "v" + run.perim.version : "없음(발화점)"}</b> · 공식 ${esc(run.snapshot.official_stage)} · 판정 <b>${esc(run.R.recStage)}</b>${isCurrent ? "" : ' <span class="badge b-없음">이전 버전</span> <a href="#" id="prop-latest">최신 버전으로</a>'}${closed ? ' <span class="badge b-종료">조회 전용</span>' : ""}` : "";
     const pl = $("#prop-latest"); if (pl) pl.onclick = (e) => { e.preventDefault(); st.viewRun = st.currentRun; renderAll(); };
     const banner = $("#stage-banner");
     if (run && run.R.stageUp) { banner.classList.add("on"); banner.innerHTML = `<b>격상 검토 권고</b> — 4요소 중 ${esc(josa(run.R.stageDrivers.join("·"), "이", "가"))} ${esc(run.R.recStage)} 기준입니다. 산림청장과 협의하십시오.${run.R.nextHolder ? ` 격상 시 지휘권자는 <b>${esc(run.R.nextHolder)}</b>, 주민대피 명령권은 시장·군수·구청장에게 남습니다.` : ""}${tip("판단기준 4요소(예상 피해면적·평균풍속·예상 진화시간·시설피해, 표준매뉴얼 p.73) 중 가장 높은 단계로 판정합니다. 예상 진화시간은 상황 정정으로 입력한 값이며 없으면 제외합니다. 구간값은 시행령 별표 기준을 2026 체계에 대응시킨 목업 근사값이고, 발령은 산림청장이 통합지휘본부와 협의해 결정하며 이 화면은 권고만 합니다.", "l")}`; }
     else banner.classList.remove("on");
     const box = $("#cards");
-    if (!run) { box.innerHTML = `<div class="muted" style="padding:18px 6px;text-align:center">${canOperate() ? "「확산예측」 탭에서 예측을 실행하면<br>진화·대피 대응 제안이 생성됩니다." : "통합지휘권자가 예측을 실행하면 표시됩니다."}</div>`; $("#prop-summary").innerHTML = ""; return; }
+    if (!run) { box.innerHTML = `<div class="muted" style="padding:18px 6px;text-align:center">확산 예측을 실행하면 제안이 생성됩니다.</div>`; $("#prop-summary").innerHTML = ""; return; }
+    const prevRun = st.runs[st.runs.indexOf(run) - 1] || null;
     const all = run.blocks.filter((b) => b.axis === state.axis);
-    const active = all.filter((b) => b.status[0] !== "(없음)").filter((b) => state.filter === "all" || b.status.includes(state.filter));
-    const noneBlocks = all.filter((b) => b.status[0] === "(없음)");
+    const fired = all.filter((b) => b.status[0] !== "(없음)");
+    const active = fired.filter((b) => state.filter === "all" || b.status.includes(state.filter));
     const card = (b) => {
-      const none = b.status[0] === "(없음)", changed = run.changed.includes(b.id);
+      const changed = prevRun && run.changed.includes(b.id);
       const evid = b.evidence.map((e) => { const c = S.evidence[e.key]; return `<span class="ev"><span class="cite" data-b="${b.id}" data-k="${e.k}">${e.k}</span> ${esc(c.doc)} ${esc(c.page)} ${esc(c.section)}</span>`; }).join("") || "—";
-      return `<div class="card axis-${b.axis}${none ? " none" : ""}${changed ? " changed" : ""}" data-id="${b.id}">
-        <div class="head"><span class="arrow">▶</span><span class="nm">${esc(b.name)}</span><span class="st">${badges(b.status)}${none ? '<span class="badge b-없음">해당 없음</span>' : ""}</span></div>
+      return `<div class="card axis-${b.axis}" data-id="${b.id}">
+        <div class="head"><span class="arrow">▶</span><span class="nm">${esc(b.name)}</span>${changed ? `<span class="chg-tag" data-chg="${b.id}" title="직전 버전 대비 변경 내용 보기">변경</span>` : ""}<span class="st">${badges(b.status)}</span></div>
+        <div class="sum">
+          <div class="text">${citeHTML(b.text, b.id)}</div>
+          ${b.withheld.map((w) => `<div class="withheld"><b>${esc(w.slot)}</b> — ${NO_EVIDENCE}</div>`).join("")}
+        </div>
         <div class="body">
-          <div class="text">${none ? `<span class="muted">${esc(b.finding || "이번 상황에서는 해당 사항이 없습니다.")}</span>` : citeHTML(b.text, b.id)}</div>
           <div class="detail">
-            ${b.finding && !none ? `<div class="row"><span class="k">판정 이유</span><span class="v">${esc(b.finding)}</span></div>` : ""}
+            ${b.finding ? `<div class="row"><span class="k">판정 이유</span><span class="v">${esc(b.finding)}</span></div>` : ""}
             ${b.targets.length ? `<div class="row"><span class="k">대상</span><span class="v">${esc(b.targets.join(", "))}</span></div>` : ""}
             <div class="row"><span class="k">권한</span><span class="v">${esc(b.authority)}</span></div>
-            <div class="row"><span class="k">충돌</span><span class="v">${b.conflicts.length ? b.conflicts.map((c) => `${esc(c.type)} (관련: ${esc(c.with)}) → ${esc(c.resolution)}`).join("<br>") : "(없음)"}</span></div>
             <div class="row"><span class="k">근거</span><span class="v">${evid}</span></div>
           </div>
-          ${canOperate() && !none ? `<div class="actions"><button class="ask-btn" data-id="${b.id}">이 항목 질문</button></div>` : ""}
+          ${canOperate() ? `<div class="actions"><button class="ask-btn" data-id="${b.id}">이 항목 질문</button></div>` : ""}
         </div></div>`;
     };
-    box.innerHTML = active.map(card).join("") + (active.length ? "" : `<div class="muted" style="padding:14px 6px;text-align:center">해당하는 항목이 없습니다.</div>`) +
-      (noneBlocks.length && state.filter === "all" ? `<div class="none-toggle" id="none-toggle">해당 없음 ${noneBlocks.length}건 ${state.showNone[state.axis] ? "숨기기 ▴" : "보기 ▾"}</div>${state.showNone[state.axis] ? noneBlocks.map(card).join("") : ""}` : "");
-    const nt = $("#none-toggle"); if (nt) nt.onclick = () => { state.showNone[state.axis] = !state.showNone[state.axis]; renderProposal(); };
-    $$("#cards .card .head").forEach((h) => h.addEventListener("click", () => h.closest(".card").classList.toggle("open")));
+    box.innerHTML = active.map(card).join("") + (active.length ? "" : `<div class="muted" style="padding:14px 6px;text-align:center">해당하는 항목이 없습니다.</div>`);
+    $$("#cards .card .head, #cards .card .sum").forEach((h) => h.addEventListener("click", () => h.closest(".card").classList.toggle("open")));
+    $$("#cards .chg-tag").forEach((t) => t.addEventListener("click", (e) => { e.stopPropagation(); showItemDiff(prevRun, run, t.dataset.chg); }));
     $$("#cards .ask-btn").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); state.chatCtx = b.dataset.id; openChatPopup(); }));
     $$("#cards .cite").forEach((c) => c.addEventListener("click", (e) => { e.stopPropagation(); openEvidence(run, c.dataset.b, Number(c.dataset.k)); }));
     const s = run.summary;
-    $("#prop-summary").innerHTML = ["즉시", "대기", "협의", "요청"].map((k) => `<span class="badge b-${k}">${k} ${s[k]}</span>`).join("") + `<span style="margin-left:auto">${state.axis} ${all.length}항목 중 해당 ${all.length - noneBlocks.length}</span>`;
+    $("#prop-summary").innerHTML = ["즉시", "대기", "협의", "요청"].map((k) => `<span class="badge b-${k}">${k} ${s[k]}</span>`).join("") + `<span style="margin-left:auto">${state.axis} 7항목 중 발동 ${fired.length}</span>`;
   }
   function focusCard(id, open) {
     const st = IS(), b = st.viewRun && st.viewRun.blocks.find((x) => x.id === id); if (!b) return;
@@ -690,26 +745,40 @@
   function renderHistory() {
     const st = IS();
     const runs = st.runs.slice().reverse();
-    $("#hist-runs").innerHTML = runs.length ? `<table class="grid"><thead><tr><th>판</th><th>생성</th><th>사유</th><th>즉시/대기/협의/요청</th><th>변경</th><th></th></tr></thead><tbody>${runs.map((r, i) => `<tr class="${r === st.viewRun ? "sel" : ""}"><td style="text-align:center"><b>${r.id}</b>${r === st.currentRun ? '<br><span class="small muted">최신</span>' : ""}</td><td class="num">${hhmm(r.createdAt)}</td><td>${esc(r.reason)}</td><td class="num" style="text-align:center">${r.summary["즉시"]}/${r.summary["대기"]}/${r.summary["협의"]}/${r.summary["요청"]}</td><td style="text-align:center">${r.seq > 1 ? `${r.changed.length}건` : "—"}</td><td style="white-space:nowrap"><button data-view="${r.id}">보기</button> ${r.seq > 1 ? `<button data-diff="${r.id}">비교</button>` : ""}</td></tr>`).join("")}</tbody></table>` : `<div class="muted small" style="padding:6px">아직 생성된 제안이 없습니다.</div>`;
+    $("#hist-runs").innerHTML = runs.length ? `<table class="grid"><thead><tr><th>버전</th><th>생성</th><th>기준 화선</th><th>생성 계기</th><th title="즉시/대기/협의/요청">즉/대/협/요</th><th>변경</th><th></th></tr></thead><tbody>${runs.map((r) => `<tr class="${r === st.viewRun ? "sel" : ""}"><td style="text-align:center;white-space:nowrap"><b>${r.id}</b>${r === st.currentRun ? '<br><span class="small muted">최신</span>' : ""}</td><td class="num">${hhmm(r.createdAt)}</td><td style="text-align:center">${r.perim ? "v" + r.perim.version : '<span class="small muted">발화점</span>'}</td><td class="small">${esc(r.reason)}</td><td class="num" style="text-align:center">${r.summary["즉시"]}/${r.summary["대기"]}/${r.summary["협의"]}/${r.summary["요청"]}</td><td style="text-align:center">${r.seq > 1 ? `${r.changed.length}건` : "—"}</td><td style="white-space:nowrap"><button data-view="${r.id}">보기</button> <button data-diff="${r.id}">비교</button></td></tr>`).join("")}</tbody></table>` : `<div class="muted small" style="padding:6px">아직 생성된 제안서가 없습니다.</div>`;
     $$("#hist-runs [data-view]").forEach((b) => (b.onclick = () => { st.viewRun = st.runs.find((r) => r.id === b.dataset.view); renderAll(); showTab("proposal"); }));
-    $$("#hist-runs [data-diff]").forEach((b) => (b.onclick = () => { const r = st.runs.find((x) => x.id === b.dataset.diff); showDiff(st.runs[st.runs.indexOf(r) - 1], r); }));
+    $$("#hist-runs [data-diff]").forEach((b) => (b.onclick = () => { const r = st.runs.find((x) => x.id === b.dataset.diff), prev = st.runs[st.runs.indexOf(r) - 1]; if (!prev) { toast("비교할 이전 버전이 없습니다."); return; } showDiff(prev, r); }));
     const ev = state.events.filter((e) => !e.inc || e.inc === state.incId).slice().reverse();
-    $("#hist-events").innerHTML = ev.length ? `<table class="grid"><thead><tr><th style="width:70px">시각</th><th style="width:52px">구분</th><th>내용</th></tr></thead><tbody>${ev.map((e) => `<tr class="sys"><td class="num">${esc(e.t)}</td><td style="text-align:center">${esc(e.kind)}</td><td>${esc(e.text)}${e.user ? ` <span class="small muted">· ${esc(e.user)}</span>` : ""}</td></tr>`).join("")}</tbody></table>` : `<div class="muted small" style="padding:6px">기록된 이벤트가 없습니다.</div>`;
+    $("#hist-events").innerHTML = ev.length ? `<table class="grid"><thead><tr><th style="width:62px">시각</th><th style="width:62px">구분</th><th>내용</th><th style="width:58px">사용자</th></tr></thead><tbody>${ev.map((e) => `<tr class="sys"><td class="num">${esc(e.t)}</td><td style="text-align:center;white-space:nowrap">${esc(e.kind)}</td><td>${esc(e.text)}</td><td class="small" style="text-align:center">${esc(e.user || "—")}</td></tr>`).join("")}</tbody></table>` : `<div class="muted small" style="padding:6px">기록된 이벤트가 없습니다.</div>`;
   }
+  const diffCol = (title, b) => `<div class="col"><h4>${esc(title)}</h4>${b && b.status[0] !== "(없음)" ? `${badges(b.status)}<div style="margin-top:4px">${esc(b.text)}</div>` : '<div class="muted">발동하지 않음(제안서에 없음)</div>'}</div>`;
+  // 「제안 변경사항」 창: 직전 버전 대비 바뀐 항목 전체(이전 문장 → 이후 문장)
   function showDiff(prev, run) {
-    const rows = run.changed.map((id) => { const a = prev.blocks.find((b) => b.id === id), b = run.blocks.find((x) => x.id === id); return `<div class="chg"><b>${esc(b.name)}</b><div class="diff" style="margin-top:4px"><div class="col"><h4>${prev.id}</h4>${badges(a.status)}<div style="margin-top:4px">${esc(a.text)}</div></div><div class="col"><h4>${run.id}</h4>${badges(b.status)}<div style="margin-top:4px">${esc(b.text)}</div></div></div></div>`; }).join("");
+    const rows = run.changed.map((id) => { const a = prev.blocks.find((b) => b.id === id), b = run.blocks.find((x) => x.id === id); return `<div class="chg"><b>${esc(b.name)}</b><div class="diff" style="margin-top:4px">${diffCol(prev.id + " (이전)", a)}${diffCol(run.id + " (이후)", b)}</div></div>`; }).join("");
     openModal(`제안 변경사항 — ${prev.id} → ${run.id} (${esc(run.reason)})`, rows || `<div class="muted">바뀐 항목이 없습니다.</div>`, [{ label: "닫기" }]);
+  }
+  // '변경' 태그 팝업: 그 항목의 직전 버전 대비 변경 내용
+  function showItemDiff(prev, run, id) {
+    if (!prev) { toast("비교할 이전 버전이 없습니다."); return; }
+    const a = prev.blocks.find((b) => b.id === id), b = run.blocks.find((x) => x.id === id);
+    openModal(`변경 내용 — ${b.name}`, `<div class="diff">${diffCol(prev.id + " (이전)", a)}${diffCol(run.id + " (이후)", b)}</div>`, [{ label: "닫기" }]);
   }
 
   // ------------------------------------------------------------------ AI 어시스턴트: 질의(UC-QA-01) · 정정(UC-QA-02)
-  const QUICK = ["왜 이 마을이 먼저입니까", "대피소 수용 초과 시 대안은", "헬기를 몇 대 더 투입해야 합니까", "격상 기준이 무엇입니까", "현재 위험도는 어떻습니까", "박곡리 대피 완료"];
+  // 빠른 질문 6개(ChatRouter.quick_questions). 상황 변화는 「상황 정정」으로 입력한다
+  const QUICK = ["대피 순서 이유", "헬기 운용 가능 여부", "격상 기준", "대피소 수용 초과 시 대안", "추가 투입 헬기 대수", "현재 위험도"];
+  function setCorrMode(on) {
+    state.corrMode = on;
+    $("#btn-corr").classList.toggle("mode-on", on);
+    $("#chat-input").placeholder = on ? "상황 변화 입력 (예: 박곡리 대피 완료, 헬기 6대 투입)" : "질문 입력 (상황 변화는 「상황 정정」)";
+  }
   function openChat() {
     const run = IS().viewRun; const b = run && run.blocks.find((x) => x.id === state.chatCtx);
     $("#chat-ctx").innerHTML = b ? `항목: <b>${esc(b.name)}</b> — 제안·근거·상황값을 붙여 질문합니다 <a href="#" id="chat-ctx-clear">해제</a>` : "항목 미지정 — 대응제안 항목의 「이 항목 질문」으로 항목을 붙일 수 있습니다";
     const cl = $("#chat-ctx-clear"); if (cl) cl.onclick = (e) => { e.preventDefault(); state.chatCtx = null; openChat(); };
     $("#chat-quick").innerHTML = QUICK.map((q) => `<button>${q}</button>`).join("");
-    $$("#chat-quick button").forEach((q) => (q.onclick = () => { $("#chat-input").value = q.textContent; sendChat(); }));
-    if (!$("#chat-log").children.length) botSay("현재 상황·대응 제안·근거에 대해 질문하거나 상황 변화(예: 박곡리 대피 완료, 헬기 6대 투입, 진화율 30%)를 말씀해 주십시오. 답변은 표준매뉴얼 근거만 인용하며, 근거가 없으면 근거 부족으로 답합니다.");
+    $$("#chat-quick button").forEach((q) => (q.onclick = () => { setCorrMode(false); $("#chat-input").value = q.textContent; sendChat(); }));
+    if (!$("#chat-log").children.length) botSay("현재 상황·대응 제안·근거를 질문하거나 빠른 질문을 누르십시오. 현장에서 바뀐 사실(예: 박곡리 대피 완료, 헬기 6대 투입)은 「상황 정정」으로 입력하면 확인 후 저장하고 제안서를 다시 만듭니다. 답변은 검색된 표준매뉴얼 근거 안에서만 하며, 근거가 부족한 내용은 표시하지 않고 이벤트 로그에 기록합니다.");
   }
   function addMsg(cls, html) { const d = document.createElement("div"); d.className = `msg ${cls}`; d.innerHTML = html; $("#chat-log").appendChild(d); $("#chat-log").scrollTop = 1e6; return d; }
   function botSay(text, blockId) {
@@ -720,7 +789,9 @@
     const q = $("#chat-input").value.trim(); if (!q) return; $("#chat-input").value = "";
     addMsg("user", esc(q));
     const corr = detectCorrection(q);
+    // 질의/정정 구분(classify): 상황 변화 보고로 판별되면 바로 반영하지 않고 정정 확인 카드로 넘긴다(UC-QA-01 E2 → UC-QA-02)
     if (corr) { setTimeout(() => proposeCorrection(corr, q), 300); return; }
+    if (state.corrMode) { setTimeout(() => botSay("입력에서 정정할 대상(마을명·자원 종류 등)이나 바뀐 값을 해석하지 못했습니다. 대상을 다시 입력해 주십시오. 예: 박곡리 대피 완료, 헬기 6대 투입, 예상 진화시간 12시간."), 300); return; }
     setTimeout(() => answer(q), 350);
   }
   function answer(q) {
@@ -732,7 +803,8 @@
     const T = [
       [/왜|먼저|순서|우선/, () => { const first = R.ordered[0]; const v = vill && R.villages.find((x) => x.id === vill.id) || first; if (!v || !v.arrival) return "확산 범위에 드는 마을이 없어 대피 순서를 정할 항목이 없습니다."; const rank = R.ordered.findIndex((x) => x.id === v.id) + 1; return `${eun(v.name)} 화선 도달 예상이 ${v.arrivalTime}로 ${rank === 1 ? "가장 이르고" : `${rank}번째이며`}, 고령자 ${v.elderly}명이 있어 안전취약계층 우선 대피 원칙이 적용됩니다 [1]. 대피명령은 마을 단위로 내리고 화선 도달 5시간 이내 마을은 즉시 실행합니다 [2].`; }, "E2"],
       [/대피소|수용|초과|분산/, () => { const ov = R.overflow; const as = R.assignments.map((a) => `${a.village.name}→${a.shelter.name}(${a.shelter.load}/${a.shelter.capacity})`).join(", "); return `현재 배정은 ${as || "없음"}입니다 [1]. ${ov.length ? `${eun(joinKo(ov.map((s) => s.name)))} 수용 인원을 초과하므로 인접 대피소로 분산해야 합니다 [1].` : "수용 초과 대피소는 없습니다."} 8시간 확산 범위 안 대피소는 제외합니다 [2].`; }, "E4"],
-      [/헬기|몇 대|대수|추가 투입/, () => `가용 진화헬기를 집중 투입하라는 원칙은 있으나 [2], 몇 대를 추가해야 하는지의 산정 기준은 제공된 청크에 없어 근거 부족입니다. 현재 투입 ${rs.heli_deployed}대, 대기 ${rs.heli_available}대이며, 풍속 ${state.wind.ms} m/s에서는 운용이 가능합니다.`, "S3"],
+      [/운용|가능 여부|띄울|뜰 수/, () => `현재 풍속 ${state.wind.ms} m/s(${dirName(state.wind.dir)}풍)${R.heliOkNow ? "로 헬기 운용이 가능하므로 가용 진화헬기를 집중 투입합니다" : "에서는 헬기 운용이 제한됩니다"} [1]. ${R.maxWind.t} 전후 풍속이 ${R.maxWind.wind_ms} m/s로 강해져 헬기 운용이 어려우면 지상진화에 집중하고, 강풍이 잦아들면 헬기를 다시 투입합니다 [2].`, "S4"],
+      [/헬기|몇 대|대수|추가 투입/, () => `가용 진화헬기를 집중 투입하라는 원칙은 있으나 [2], 추가 투입 헬기 대수는 ${NO_EVIDENCE} 현재 투입 ${rs.heli_deployed}대, 대기 ${rs.heli_available}대이며, 풍속 ${state.wind.ms} m/s에서는 운용이 가능합니다.`, "S3", "추가 투입 헬기 대수"],
       [/격상|단계|기준/, () => `대응단계 판단기준은 피해면적·평균풍속·예상 진화시간·시설피해 4요소이며 하나라도 상위 기준을 충족하면 상위 단계를 검토합니다 [1]. 현재 4요소는 ${R.stageFactors.map((f) => `${f.name} ${f.val}(${f.stage || "판정 제외"})`).join(", ")}이고, 가장 높은 단계인 ${R.recStage}로 판정합니다. 발령은 산림청장이 통합지휘본부와 협의해 하므로 이 화면은 격상 검토를 권고할 뿐입니다 [2].`, "S1"],
       [/야간|일몰|밤|사전대피/, () => `일몰은 ${R.sunset}이고 ${R.nightVillages.length ? `${eun(joinKo(R.nightVillages.map((v) => `${v.name}(${v.arrivalTime})`)))} 화선 도달 예상 시각이 일몰 이후이므로 일몰 전 사전대피 대상입니다 [1].` : "화선 도달 예상 시각이 일몰 이후인 마을은 없습니다."} 야간에는 풍속이 잦아드는 시간대에 집중 진화를 합니다.`, "E2"],
       [/송전|한전|전류|고압/, () => R.powerIn ? `송전선이 ${timeAt(R.powerIn)} 무렵 확산 범위에 들므로 한전에 전류 차단과 우회선로 확보를 요청해야 합니다 [2]. 요청 대상은 한전이며 통합지휘본부에 협력관 파견을 받습니다.` : "8시간 확산 범위 안에 송전선이 없어 한전 요청 항목은 발동하지 않았습니다.", "S5"],
@@ -740,12 +812,13 @@
       [/경찰|교통|통제|도로|진입로/, () => `대피로와 진화차량 진입로가 겹치는 구간이 있어 경찰에 교통통제와 주민대피 지원을 요청해야 합니다 [1]. ${R.routeInFire ? `겹침 구간은 ${timeAt(R.routeInFire)} 무렵 확산 범위에 듭니다.` : ""}`, "E5"],
       [/취약|요양|장애|시설/, () => R.careIn.length ? `${josa(joinKo(R.careIn.map((f) => `${f.name}(${timeAt(f.arrival)}, ${f.capacity}명)`)), "이", "가")} 확산 범위에 들어 위험구역에 포함하고 별도 이송을 지시해야 합니다 [1].` : "8시간 확산 범위 안에 취약시설이 없습니다.", "E3"],
       [/자원|인력|소방차|차량|투입 현황/, () => `현재 투입 자원은 헬기 ${rs.heli_deployed}대, 지상인력 ${rs.ground_crew_deployed}명, 소방차 ${rs.fire_trucks_deployed}대이고 대기 자원은 헬기 ${rs.heli_available}대, 차량 ${rs.trucks_available}대입니다. 확산 정도에 따라 진화자원을 단계적으로 투입하고 인접 시·군 자원을 동원합니다 [2].`, "S3"],
-      [/현재 상황|상황|피해면적|진화율/, () => `${I.name}은 ${I.status} 상태이며 공식 단계 ${I.official_stage}, 위기경보 ${I.alert_level}입니다. 실측 피해면적 ${R.areaNow ? fmt1(R.areaNow) + " ha" : "미입력"}, 진화율 ${I.field_report.containment_pct}%, 5시간 후 예상 ${fmt0(R.areaP5)} ha이고 위험구역 마을은 ${vn(R.immediate)}, 잠재 위험구역 마을은 ${vn(R.standby)}입니다 [1].`, "E1"],
-      [/근거|출처|어디|매뉴얼/, () => "모든 제안 문장은 표준매뉴얼(2026.6 일부개정) 본문 쪽수를 번호로 인용하며, 청크에서 확인되지 않는 내용은 근거 부족으로 표시합니다. 문장 안의 번호를 누르면 요약 청크를 볼 수 있습니다.", null]
+      [/현재 상황|상황|피해면적/, () => `${I.name}은 ${I.status} 상태이며 공식 단계 ${I.official_stage}, 위기경보 ${I.alert_level}입니다. 실측 피해면적 ${R.areaNow ? fmt1(R.areaNow) + " ha" : "미입력"}(실측 화선 ${perimTag(curPerim(I))}), 5시간 후 예상 ${fmt0(R.areaP5)} ha이고 위험구역 마을은 ${vn(R.immediate)}, 잠재 위험구역 마을은 ${vn(R.standby)}입니다 [1].`, "E1"],
+      [/근거|출처|어디|매뉴얼/, () => "모든 제안 문장은 표준매뉴얼(2026.6 일부개정) 본문 쪽수를 번호로 인용합니다. 청크에서 확인되지 않는 내용은 화면에 내보내지 않고 해당 칸에 「근거가 부족하여 표시하지 않았습니다」로 알리며, 이벤트 로그에 근거 부족으로 기록합니다. 문장 안의 번호를 누르면 요약 청크를 볼 수 있습니다.", null]
     ];
-    for (const [re, fn, bid] of T) if (re.test(q)) { const b = bid || ctx; botSay(fn(), b && run.blocks.find((x) => x.id === b) ? b : null); return; }
-    if (ctx) { const b = run.blocks.find((x) => x.id === ctx); botSay(`${b.name} 항목의 판정 이유는 "${b.finding}"이며 제안은 다음과 같습니다. ${b.text} 질문하신 내용은 제공된 청크에서 직접 확인되지 않아 근거 부족입니다.`, b.id); return; }
-    botSay("근거 부족: 제공된 매뉴얼 청크에서 확인되지 않습니다. 대응제안 항목의 「이 항목 질문」으로 항목을 지정하거나, 상황 변화(예: 박곡리 대피 완료, 헬기 6대 투입, 진화율 30%, 대피명령 발령)를 말씀해 주십시오.");
+    for (const [re, fn, bid, gap] of T) if (re.test(q)) { const b = bid || ctx; botSay(fn(), b && run.blocks.find((x) => x.id === b) ? b : null); if (gap) addEvent("근거 부족", `AI 어시스턴트 답변 — ${gap} 비표시(청크에 산정 기준 없음)`); return; }
+    if (ctx) { const b = run.blocks.find((x) => x.id === ctx); botSay(`${b.name} 항목의 판정 이유는 "${b.finding}"이며 제안은 다음과 같습니다. ${b.text} 질문하신 내용에 대한 답변은 ${NO_EVIDENCE}`, b.id); addEvent("근거 부족", `AI 어시스턴트 답변 — ${b.name} 질문 「${q.slice(0, 30)}」 비표시(관련 청크 없음)`); return; }
+    addEvent("근거 부족", `AI 어시스턴트 답변 — 질문 「${q.slice(0, 30)}」 비표시(관련 청크 없음)`);
+    botSay(`질문과 관련된 매뉴얼 근거를 찾지 못해 답변은 ${NO_EVIDENCE} 추측으로 답하지 않습니다. 대응제안 항목의 「이 항목 질문」으로 항목을 지정해 다시 질문하거나, 상황 변화는 「상황 정정」으로 입력해 주십시오.`);
   }
   function detectCorrection(q) {
     const vill = S.villages.filter((v) => q.includes(v.name));
@@ -755,7 +828,6 @@
     if ((m = q.match(/헬기\D{0,8}(\d+)\s*대/)) && /투입|추가|도착|운용/.test(q)) return { type: "heli", n: Number(m[1]) };
     if ((m = q.match(/(소방차|차량|진화차)\D{0,8}(\d+)\s*대/)) && /투입|추가|도착|배치/.test(q)) return { type: "truck", n: Number(m[2]) };
     if ((m = q.match(/(인력|진화대|진화조)\D{0,8}(\d+)\s*(명|개\s*조|조)/)) && /투입|추가|도착|배치/.test(q)) return { type: "crew", n: Number(m[2]), unit: m[3] };
-    if ((m = q.match(/진화율\D{0,6}(\d{1,3})\s*%?/))) return { type: "containment", n: Number(m[1]) };
     if ((m = q.match(/예상\s*진화\s*시간\D{0,6}(\d{1,3})\s*시간/))) return { type: "eta", n: Number(m[1]) };
     if (/대피\s*명령.{0,6}(발령|내렸|했)/.test(q)) return { type: "order" };
     if (/(재난\s*문자|CBS).{0,10}(송출|발송|보냈)/.test(q)) { const emd = (q.match(/([가-힣]+[읍면동])/g) || []); return { type: "cbs", targets: emd.length ? emd : ["안평면"] }; }
@@ -763,29 +835,33 @@
     const al = ["관심", "주의", "경계", "심각"].find((a) => q.includes(a)); if (al && /위기\s*경보/.test(q)) return { type: "alert", level: al };
     return null;
   }
-  const corrLabel = (c) => c.type === "completed" ? c.villages.join("·") + " 대피 완료" : c.type === "injury" ? c.villages.join("·") + " 부상·고립 보고" : c.type === "heli" ? "헬기 투입 " + c.n + "대" : c.type === "truck" ? "소방차 투입 " + c.n + "대" : c.type === "crew" ? "진화인력 투입 " + c.n + c.unit : c.type === "containment" ? "진화율 " + c.n + "%" : c.type === "eta" ? "예상 진화시간 " + c.n + "시간" : c.type === "order" ? "대피명령 발령" : c.type === "cbs" ? "재난문자 송출 " + c.targets.join("·") : c.type === "stage" ? "공식 단계 " + c.stage : "위기경보 " + c.level;
+  const corrLabel = (c) => c.type === "completed" ? c.villages.join("·") + " 대피 완료" : c.type === "injury" ? c.villages.join("·") + " 부상·고립 보고" : c.type === "heli" ? "헬기 투입 " + c.n + "대" : c.type === "truck" ? "소방차 투입 " + c.n + "대" : c.type === "crew" ? "진화인력 투입 " + c.n + c.unit : c.type === "eta" ? "예상 진화시간 " + c.n + "시간" : c.type === "order" ? "대피명령 발령" : c.type === "cbs" ? "재난문자 송출 " + c.targets.join("·") : c.type === "stage" ? "공식 단계 " + c.stage : "위기경보 " + c.level;
   function proposeCorrection(c, q) {
     const I = inc(), es = I.evacuation_state, rs = rsView(), rows = [];
     if (I.status === "종료") { botSay("종료된 산불에는 상황 정정을 적용할 수 없습니다."); return; }
     if (!IS().predicted) { botSay("아직 예측·제안이 없어 정정할 대상이 없습니다. 먼저 확산 예측을 실행해 주십시오."); return; }
-    if (c.type === "completed") rows.push(["대피 완료 마을", es.completed_villages.join(", ") || "없음", [...new Set([...es.completed_villages, ...c.villages])].join(", ")]);
-    if (c.type === "injury") rows.push(["부상·고립 보고", es.injuries.join(", ") || "없음", [...new Set([...es.injuries, ...c.villages])].join(", ")]);
-    if (c.type === "heli") rows.push(["헬기 투입(대)", rs.heli_deployed, c.n]);
-    if (c.type === "truck") rows.push(["소방차 투입(대)", rs.fire_trucks_deployed, c.n]);
-    if (c.type === "crew") rows.push(["지상 진화인력 투입", `${rs.ground_crew_deployed}명`, `${c.n}${c.unit}`]);
-    if (c.type === "containment") { if (c.n < 0 || c.n > 100) { botSay("진화율은 0~100 사이여야 합니다."); return; } rows.push(["진화율(%)", I.field_report.containment_pct, c.n]); }
-    if (c.type === "eta") rows.push(["예상 진화시간", I.field_report.expected_suppression_hours == null ? "미입력" : I.field_report.expected_suppression_hours + "시간", c.n + "시간"]);
-    if (c.type === "order") rows.push(["대피명령", es.order_issued ? "발령" : "미발령", "발령"]);
-    if (c.type === "cbs") rows.push(["재난문자 송출 이력", es.cbs_sent.join(", ") || "없음", [...new Set([...es.cbs_sent, ...c.targets])].join(", ")]);
-    if (c.type === "stage") rows.push(["공식 대응단계", I.official_stage, c.stage]);
-    if (c.type === "alert") rows.push(["위기경보", I.alert_level, c.level]);
+    const evacState = (n) => (es.completed_villages.includes(n) ? "대피 완료" : es.order_issued ? "대피 중" : "대피 대상");
+    if (c.type === "completed") c.villages.forEach((n) => rows.push([n, "대피 상태", evacState(n), "대피 완료"]));
+    if (c.type === "injury") c.villages.forEach((n) => rows.push([n, "부상·고립", es.injuries.includes(n) ? "보고됨" : "없음", "보고됨"]));
+    if (c.type === "heli") rows.push(["헬기", "투입 수(대)", rs.heli_deployed, c.n]);
+    if (c.type === "truck") rows.push(["소방차", "투입 수(대)", rs.fire_trucks_deployed, c.n]);
+    if (c.type === "crew") rows.push(["지상 진화인력", "투입", `${rs.ground_crew_deployed}명`, `${c.n}${c.unit}`]);
+    if (c.type === "eta") rows.push([I.name, "예상 진화시간", I.field_report.expected_suppression_hours == null ? "미입력" : I.field_report.expected_suppression_hours + "시간", c.n + "시간"]);
+    if (c.type === "order") rows.push(["위험구역 마을", "대피명령", es.order_issued ? "발령" : "미발령", "발령"]);
+    if (c.type === "cbs") rows.push([c.targets.join("·"), "재난문자 송출", es.cbs_sent.join(", ") || "없음", [...new Set([...es.cbs_sent, ...c.targets])].join(", ")]);
+    if (c.type === "stage") rows.push([I.name, "공식 대응단계", I.official_stage, c.stage]);
+    if (c.type === "alert") rows.push([I.name, "위기경보", I.alert_level, c.level]);
     const R = IS().viewRun && IS().viewRun.R;
-    if (c.type === "completed" && R) { const notTarget = c.villages.filter((n) => !R.ordered.find((v) => v.name === n)); if (notTarget.length) { botSay(`${eun(joinKo(notTarget))} 대피 명령 대상(위험·잠재 위험구역)이 아니므로 "대피 완료"로 기록할 수 없습니다. 상황을 다시 확인해 주십시오.`); return; } }
-    if (c.type === "heli" && c.n > rs.heli_deployed + rs.heli_available) { botSay(`가용 헬기는 투입 ${rs.heli_deployed}대·대기 ${rs.heli_available}대뿐이라 ${c.n}대 투입을 기록할 수 없습니다. 진화자원 정보는 전산 관리자가 갱신합니다.`); return; }
-    if (c.type === "truck" && c.n > rs.fire_trucks_deployed + rs.trucks_available) { botSay(`가용 소방차는 투입 ${rs.fire_trucks_deployed}대·대기 ${rs.trucks_available}대뿐이라 ${c.n}대 투입을 기록할 수 없습니다.`); return; }
-    addMsg("sys", "상황 정정으로 판정 — 확인 창을 엽니다");
-    openModal("상황 정정 확인", `<div class="small muted" style="margin-bottom:8px">입력: “${esc(q)}”</div><table class="grid"><thead><tr><th>항목</th><th>이전</th><th>변경</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r[0])}</td><td>${esc(String(r[1]))}</td><td><b>${esc(String(r[2]))}</b></td></tr>`).join("")}</tbody></table><div class="small muted" style="margin-top:8px">확인하면 상황을 저장(정정·시각·사용자)하고 예측은 그대로 둔 채 대응 제안을 다시 생성합니다. 제안 문구 자체를 근거 없이 바꾸는 요청은 받지 않습니다.</div>`,
-      [{ label: "취소", onClick: () => { botSay("정정을 취소했습니다. 상황은 바뀌지 않았습니다."); } }, { label: "확인 · 저장 후 재생성", cls: "primary", onClick: () => { applyCorrection(c); } }]);
+    // E1: 대상이 데이터에 없거나 정정할 수 없는 대상이면 다시 입력받는다
+    if (c.type === "completed" && R) { const notTarget = c.villages.filter((n) => !R.ordered.find((v) => v.name === n)); if (notTarget.length) { botSay(`${eun(joinKo(notTarget))} 대피 대상(위험·잠재 위험구역) 마을이 아니어서 "대피 완료"로 정정할 수 없습니다. 대상을 다시 입력해 주십시오.`); return; } }
+    // E3: 가용 범위를 넘는 값은 기록하지 않는다
+    const crewMax = S.resources.filter((r) => r.type === "인력" && r.status !== "정비");
+    if (c.type === "heli" && c.n > rs.heli_deployed + rs.heli_available) { botSay(`가용 범위 초과, 기록 불가 — 헬기는 투입 ${rs.heli_deployed}대·대기 ${rs.heli_available}대뿐입니다. 아무것도 저장하지 않았습니다.`); return; }
+    if (c.type === "truck" && c.n > rs.fire_trucks_deployed + rs.trucks_available) { botSay(`가용 범위 초과, 기록 불가 — 소방차는 투입 ${rs.fire_trucks_deployed}대·대기 ${rs.trucks_available}대뿐입니다. 아무것도 저장하지 않았습니다.`); return; }
+    if (c.type === "crew" && c.n > (/조/.test(c.unit) ? crewMax.length : crewMax.reduce((a, r) => a + (Number(r.qty) || 0), 0))) { botSay(`가용 범위 초과, 기록 불가 — 지상 진화인력은 ${crewMax.length}개 조 ${crewMax.reduce((a, r) => a + (Number(r.qty) || 0), 0)}명뿐입니다. 아무것도 저장하지 않았습니다.`); return; }
+    addMsg("sys", "상황 정정으로 판정 — 정정 확인 카드를 엽니다");
+    openModal("상황 정정 확인", `<div class="small muted" style="margin-bottom:8px">입력: “${esc(q)}”</div><table class="grid"><thead><tr><th>대상</th><th>항목</th><th>이전</th><th>변경</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(String(r[0]))}</td><td>${esc(r[1])}</td><td>${esc(String(r[2]))}</td><td><b>${esc(String(r[3]))}</b></td></tr>`).join("")}</tbody></table><div class="small muted" style="margin-top:8px">확인하면 바뀐 상황 값을 저장하고 이벤트 로그에 기록한 뒤, 예측(P1~P8)은 그대로 둔 채 규칙 판정과 대응 제안만 다시 만들어 새 버전을 저장합니다. 확인 전에는 아무것도 저장하지 않습니다.</div>`,
+      [{ label: "취소", onClick: () => { botSay("정정을 취소했습니다. 아무것도 저장하지 않았습니다."); } }, { label: "확인 · 저장 후 재생성", cls: "primary", onClick: () => { applyCorrection(c); } }]);
   }
   function applyCorrection(c) {
     const I = inc(), es = I.evacuation_state;
@@ -794,41 +870,66 @@
     if (c.type === "heli") setDeployed("헬기", c.n);
     if (c.type === "truck") setDeployed("차량", c.n);
     if (c.type === "crew") { if (/조/.test(c.unit)) setDeployed("인력", c.n); else { const units = S.resources.filter((r) => r.type === "인력" && r.status !== "정비"); units.forEach((r) => (r.status = "대기")); let sum = 0; for (const r of units) { if (sum >= c.n) break; r.status = "투입"; sum += Number(r.qty) || 0; } rebuildCrewMarkers(); } }
-    if (c.type === "containment") I.field_report.containment_pct = c.n;
     if (c.type === "eta") I.field_report.expected_suppression_hours = c.n;
     if (c.type === "order") es.order_issued = true;
     if (c.type === "cbs") es.cbs_sent = [...new Set([...es.cbs_sent, ...c.targets])];
     if (c.type === "stage") I.official_stage = c.stage;
     if (c.type === "alert") I.alert_level = c.level;
     addEvent("정정", corrLabel(c));
+    setCorrMode(false);
     const prev = IS().currentRun; const run = generateProposal("상황 정정");
-    botSay(`정정을 저장하고 대응 제안 ${run.id}을 다시 생성했습니다. 바뀐 항목: ${run.changed.length ? run.changed.map((id) => (run.blocks.find((b) => b.id === id) || {}).name).join(", ") : "없음"}.`);
+    botSay(`상황 정정을 저장했습니다. 제안서 ${run.id} 생성(예측은 그대로) — 바뀐 항목: ${run.changed.length ? run.changed.map((id) => (run.blocks.find((b) => b.id === id) || {}).name).join(", ") : "없음"}. 대응 제안 화면에서 '변경' 태그로 확인할 수 있습니다.`);
     if (prev) showDiff(prev, run);
     if (c.type === "stage" && stageIdx(c.stage) >= 2) toast("공식 단계가 2단계 이상이면 지휘권이 시·도지사로 넘어가 이 화면은 격상·인계 안내만 유효합니다.", 4000);
   }
 
-  // ------------------------------------------------------------------ 상황 보고자 (UC-INPUT-01)
+  // ------------------------------------------------------------------ 상황 보고자 (UC-REPORT-01 산불 상황 보고)
+  // 최초 보고: 발화 위치·발생 일시·신고 내용·접수 시각·기관별 접수 기록 → 산불을 '접수'로 생성. 실측 화선이 처음 저장되면 '진행 중'
+  // 1시간 주기 보고(A1): 직전 실측 화선을 불러와 수정 후 새 버전(v2, v3 …)으로 제출. 정정(A2): 수정본을 다시 제출하고 이전 버전은 '정정됨'으로 보존
+  const repInc = () => (state.rep.editingId ? S.incidents.find((i) => i.id === state.rep.editingId) : null);
   function renderReporter() {
-    const rp = state.rep;
-    $("#rep-list").innerHTML = incidentListHTML(rp.showEnded, rp.editingId);
+    const rp = state.rep, I = repInc(), closed = I && I.status === "종료";
+    $("#rep-mode").innerHTML = listModeHTML(rp.listMode, "rlm");
+    $$("#rep-mode [data-rlm]").forEach((b) => (b.onclick = () => { rp.listMode = b.dataset.rlm; renderReporter(); }));
+    $("#rep-list").innerHTML = incidentListHTML(rp.listMode, rp.editingId);
     $$("#rep-list tr.clickable").forEach((tr) => (tr.onclick = () => { loadRepForm(tr.dataset.inc); selectIncident(tr.dataset.inc, true); }));
-    $("#rep-poly-info").innerHTML = rp.drawMode ? `그리는 중 — 꼭짓점 ${rp.pts.length}개 (3개 이상이면 「그리기 완료」)` : rp.ring ? `폴리곤 ${rp.ring.length - 1}개 꼭짓점 · 면적 <b>${fmt1(ringAreaHa(rp.ring))} ha</b>` : "폴리곤 없음";
+    $("#rep-form-title").innerHTML = I ? `발화 정보 — ${esc(I.name)} ${stBadge(I.status)}` : "발화 정보 — 새 산불 보고";
+    $("#rep-perim").disabled = !I || closed;
+    $("#rep-save").disabled = !!closed;
+    $("#rep-closed-note").style.display = closed ? "" : "none";
+    $("#rep-intake").innerHTML = rp.intake.length ? `<table class="grid"><thead><tr><th>접수 기관</th><th style="width:52px">시각</th><th>접수 경로</th><th style="width:26px"></th></tr></thead><tbody>${rp.intake.map((r, i) => `<tr><td>${esc(r.org)}</td><td class="num">${esc(r.at)}</td><td>${esc(r.channel || "—")}</td><td style="text-align:center">${closed ? "" : `<button class="ik-del" data-i="${i}" title="삭제" style="padding:0 5px">✕</button>`}</td></tr>`).join("")}</tbody></table>` : '<div class="muted small">접수 기록 없음</div>';
+    $$("#rep-intake .ik-del").forEach((b) => (b.onclick = () => { rp.intake.splice(Number(b.dataset.i), 1); renderReporter(); }));
+    const cp = I ? curPerim(I) : null, all = I ? I.perimeters || [] : [];
+    $("#rep-perim-cur").innerHTML = cp ? `현재 <b>${perimTag(cp)}</b> · ${fmt1(ringAreaHa(cp.ring))} ha · ${fmtIso(cp.at)} ${esc(cp.by || "")} (${esc(cp.source || "")})${all.length > 1 ? `<br><span class="muted">이전 버전: ${all.filter((p) => p !== cp).map((p) => `v${p.version} ${fmt1(ringAreaHa(p.ring))} ha ${fmtHM(p.at)}${p.status === "정정됨" ? "(정정됨)" : ""}`).join(" · ")}</span>` : ""}` : `<span class="muted">${I ? "보고된 실측 화선 없음 — 첫 화선을 저장하면 '진행 중'으로 바뀝니다" : "새 산불 — 화선이 있으면 함께 그려 제출합니다"}</span>`;
+    $("#rep-perim-mode").innerHTML = cp && rp.ring && !rp.drawMode ? `제출 방식 <label><input type="radio" name="pmode" value="new" ${rp.perimMode === "new" ? "checked" : ""}> 새 버전으로 보고(v${Math.max(...all.map((p) => p.version)) + 1})</label> <label><input type="radio" name="pmode" value="correct" ${rp.perimMode === "correct" ? "checked" : ""}> ${perimTag(cp)} 정정(이전 버전은 '정정됨'으로 보존)</label>` : "";
+    $$('#rep-perim-mode input[name="pmode"]').forEach((r) => (r.onchange = () => { rp.perimMode = r.value; }));
+    $("#rep-poly-info").innerHTML = rp.drawMode ? `그리는 중 — 꼭짓점 ${rp.pts.length}개 (3개 이상이면 「그리기 완료」)` : rp.ring ? `제출할 화선: 꼭짓점 <b>${rp.ring.length - 1}개</b> · 면적 <b>${fmt1(ringAreaHa(rp.ring))} ha</b> <span class="small muted">(${esc(rp.ringSource || "")})</span>` : "제출할 새 화선 없음";
     $("#rep-draw-done").disabled = !(rp.drawMode && rp.pts.length >= 3);
     $("#rep-draw").classList.toggle("mode-on", rp.drawMode); $("#rep-pick").classList.toggle("mode-on", rp.pickMode);
+    ["#rep-draw", "#rep-draw-clear", "#rep-geojson", "#rep-pick", "#ik-add"].forEach((id) => ($(id).disabled = !!closed));
     const hint = $("#draw-hint"); hint.classList.toggle("on", rp.drawMode || rp.pickMode);
-    hint.textContent = rp.drawMode ? "지도를 눌러 화선 폴리곤의 꼭짓점을 차례로 찍으십시오. 끝나면 「그리기 완료」 (Esc 취소)" : "지도를 눌러 발화 위치를 지정하십시오 (Esc 취소)";
+    hint.textContent = rp.drawMode ? "지도를 눌러 실측 화선 폴리곤의 꼭짓점을 차례로 찍으십시오. 끝나면 「그리기 완료」 (Esc 취소)" : "지도를 눌러 발화 위치를 지정하십시오 (Esc 취소)";
     drawPreview();
   }
   function loadRepForm(id) {
-    const rp = state.rep; rp.editingId = id; rp.pickMode = false; rp.drawMode = false; rp.pts = [];
+    const rp = state.rep; rp.editingId = id; rp.pickMode = false; rp.drawMode = false; rp.pts = []; rp.ring = null; rp.ringSource = null; rp.perimMode = "new";
     const I = id ? S.incidents.find((i) => i.id === id) : null;
     $("#rep-name").value = I ? I.name : ""; $("#rep-addr").value = I ? I.addr : "경북 의성군 ";
     $("#rep-lng").value = I ? I.ignition[0] : ""; $("#rep-lat").value = I ? I.ignition[1] : "";
-    $("#rep-start").value = I && I.start_time ? isoLocal(new Date(I.start_time)) : isoLocal(nowSim());
+    $("#rep-start").value = I ? (I.start_time ? isoLocal(new Date(I.start_time)) : "") : isoLocal(nowSim());
     $("#rep-report").value = I && I.report_time ? isoLocal(new Date(I.report_time)) : isoLocal(nowSim());
     $("#rep-text").value = I ? I.report_text : "";
-    rp.ring = I && I.actual_polygon ? clone(I.actual_polygon.ring) : null;
+    rp.intake = I ? clone(I.intake || []) : [];
+    $$("#rep-panel .invalid").forEach((el) => el.classList.remove("invalid"));
     if (map && state.markers["pick"]) { const el = state.markers["pick"].getElement(); if (I) { state.markers["pick"].setLngLat(I.ignition); el.style.display = ""; } else el.style.display = "none"; }
+    renderReporter();
+  }
+  // 「실측 화선 보고」(A1): 직전 실측 화선을 불러와 수정·제출. 지도에서 다시 그리거나 GeoJSON으로 바꿀 수 있다
+  function startPerimReport() {
+    const rp = state.rep, I = repInc(); if (!I || I.status === "종료") return;
+    const cp = curPerim(I); rp.perimMode = "new"; rp.drawMode = false; rp.pts = [];
+    if (cp) { rp.ring = clone(cp.ring); rp.ringSource = `${perimTag(cp)} 불러옴`; toast(`직전 실측 화선 ${perimTag(cp)}을 불러왔습니다. 다시 그리거나 GeoJSON으로 수정한 뒤 저장하면 새 버전으로 제출됩니다.`, 4200); }
+    else { rp.ring = null; rp.drawMode = true; toast("보고된 화선이 없습니다. 지도에서 실측 화선을 그리십시오."); }
     renderReporter();
   }
   function drawPreview() {
@@ -843,62 +944,125 @@
     if (rp.pickMode) { $("#rep-lng").value = lngLat[0].toFixed(5); $("#rep-lat").value = lngLat[1].toFixed(5); state.markers["pick"].setLngLat(lngLat); state.markers["pick"].getElement().style.display = ""; rp.pickMode = false; renderReporter(); toast("발화 위치를 지정했습니다."); return; }
     if (rp.drawMode) { rp.pts.push(lngLat); renderReporter(); }
   }
-  function finishDraw() { const rp = state.rep; if (rp.pts.length < 3) return; rp.ring = [...rp.pts, rp.pts[0]]; rp.drawMode = false; rp.pts = []; renderReporter(); toast(`폴리곤 입력 완료 · ${fmt1(ringAreaHa(rp.ring))} ha`); }
+  function finishDraw() { const rp = state.rep; if (rp.pts.length < 3) return; rp.ring = [...rp.pts, rp.pts[0]]; rp.ringSource = "지도 그리기"; rp.drawMode = false; rp.pts = []; renderReporter(); toast(`화선 그리기 완료 · 꼭짓점 ${rp.ring.length - 1}개 · ${fmt1(ringAreaHa(rp.ring))} ha`); }
   function cancelModes() { const rp = state.rep; if (rp.drawMode || rp.pickMode) { rp.drawMode = false; rp.pickMode = false; rp.pts = []; renderReporter(); } }
   function openGeoJsonModal() {
     openModal("GeoJSON 폴리곤 붙여넣기", `<div class="small muted" style="margin-bottom:6px">Polygon 또는 Feature/FeatureCollection(첫 Polygon)의 [경도, 위도] 좌표를 붙여 넣으십시오.</div><textarea id="gj-text" style="width:100%;min-height:160px;font-family:monospace;font-size:11px">${esc(JSON.stringify({ type: "Polygon", coordinates: [state.rep.ring || [[128.6025, 36.3655], [128.6045, 36.3665], [128.6030, 36.3680], [128.6010, 36.3668], [128.6025, 36.3655]]] }))}</textarea>`,
-      [{ label: "취소" }, { label: "적용", cls: "primary", onClick: () => { try { let g = JSON.parse($("#gj-text").value); if (g.type === "FeatureCollection") g = (g.features.find((f) => f.geometry && f.geometry.type === "Polygon") || {}).geometry; if (g && g.type === "Feature") g = g.geometry; if (!g || g.type !== "Polygon" || !Array.isArray(g.coordinates) || g.coordinates[0].length < 4) throw new Error("Polygon 좌표가 아닙니다."); const ring = g.coordinates[0].map((c) => [Number(c[0]), Number(c[1])]); if (ring.some((c) => !isFinite(c[0]) || !isFinite(c[1]))) throw new Error("좌표 값 오류"); if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) ring.push(ring[0]); state.rep.ring = ring; state.rep.drawMode = false; renderReporter(); toast(`GeoJSON 적용 · ${fmt1(ringAreaHa(ring))} ha`); } catch (e) { toast("GeoJSON 해석 실패: " + e.message); return false; } } }]);
+      [{ label: "취소" }, { label: "적용", cls: "primary", onClick: () => { try { let g = JSON.parse($("#gj-text").value); if (g.type === "FeatureCollection") g = (g.features.find((f) => f.geometry && f.geometry.type === "Polygon") || {}).geometry; if (g && g.type === "Feature") g = g.geometry; if (!g || g.type !== "Polygon" || !Array.isArray(g.coordinates) || g.coordinates[0].length < 4) throw new Error("Polygon 좌표가 아닙니다."); const ring = g.coordinates[0].map((c) => [Number(c[0]), Number(c[1])]); if (ring.some((c) => !isFinite(c[0]) || !isFinite(c[1]))) throw new Error("좌표 값 오류"); if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) ring.push(ring[0]); state.rep.ring = ring; state.rep.ringSource = "GeoJSON"; state.rep.drawMode = false; renderReporter(); toast(`GeoJSON 적용 · ${fmt1(ringAreaHa(ring))} ha`); } catch (e) { toast("GeoJSON 해석 실패: " + e.message); return false; } } }]);
+  }
+  function addIntakeRow() {
+    const org = $("#ik-org").value.trim(), at = $("#ik-at").value, ch = $("#ik-ch").value.trim();
+    $("#ik-org").classList.toggle("invalid", !org); $("#ik-at").classList.toggle("invalid", !at);
+    if (!org || !at) { toast("접수 기관과 접수 시각을 입력하십시오."); return; }
+    state.rep.intake.push({ org, at, channel: ch || "" }); $("#ik-org").value = ""; $("#ik-ch").value = ""; renderReporter();
   }
   function saveReport() {
     const rp = state.rep;
+    let I = repInc();
+    // E2: 종료 처리된 산불에는 보고를 받지 않는다
+    if (I && I.status === "종료") { toast("종료된 산불은 수정할 수 없습니다."); return; }
+    if (rp.drawMode) { toast("그리기를 끝내거나(「그리기 완료」) 취소한 뒤 저장하십시오."); return; }
     const name = $("#rep-name").value.trim(), addr = $("#rep-addr").value.trim(), lng = Number($("#rep-lng").value), lat = Number($("#rep-lat").value);
     const start = $("#rep-start").value, report = $("#rep-report").value, text = $("#rep-text").value.trim();
-    const errs = [];
-    if (!name) errs.push("산불명"); if (!addr) errs.push("발생 장소"); if (!isFinite(lng) || !isFinite(lat) || !$("#rep-lng").value || !$("#rep-lat").value) errs.push("발화 위치"); if (!start) errs.push("발생 일시");
-    if (errs.length) { toast(`입력이 필요합니다: ${errs.join(", ")}`); return; }
-    if (lng < 124 || lng > 132 || lat < 33 || lat > 39) { toast("발화 위치 좌표가 국내 범위를 벗어났습니다."); return; }
-    let I = rp.editingId ? S.incidents.find((i) => i.id === rp.editingId) : null;
+    // E1: 필수 값·국내 좌표 범위·폴리곤 검사, 잘못된 항목 표시
+    const bad = [];
+    const mark = (id, ok, label) => { $(id).classList.toggle("invalid", !ok); if (!ok) bad.push(label); };
+    mark("#rep-name", !!name, "산불명"); mark("#rep-addr", !!addr && addr !== "경북 의성군", "발생 장소");
+    const coordOk = $("#rep-lng").value !== "" && $("#rep-lat").value !== "" && isFinite(lng) && isFinite(lat) && lng >= 124 && lng <= 132 && lat >= 33 && lat <= 39;
+    mark("#rep-lng", coordOk, "발화 위치(국내 좌표)"); $("#rep-lat").classList.toggle("invalid", !coordOk);
+    mark("#rep-report", !!report, "신고 접수 일시");
+    const startOk = !start || !report || new Date(start) <= new Date(report);
+    mark("#rep-start", startOk, "발생 일시(신고 접수 이후일 수 없음)");
+    if (rp.ring && (rp.ring.length < 4 || ringAreaHa(rp.ring) <= 0)) bad.push("실측 화선(꼭짓점 3개 이상)");
+    if (bad.length) { toast(`제출할 수 없습니다 — 확인할 항목: ${bad.join(", ")}`, 3600); return; }
     const isNew = !I;
-    if (isNew) { const d = new Date(start); const seq = S.incidents.filter((i) => i.id.startsWith(`F-${d.getFullYear()}-${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`)).length + 1; I = { id: `F-${d.getFullYear()}-${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(seq)}`, status: "진행 중", real: false, intake: [], official_stage: "초기대응", alert_level: "주의", actual_polygon: null, field_report: { containment_pct: 0, expected_suppression_hours: null }, evacuation_state: { order_issued: false, cbs_sent: [], completed_villages: [], injuries: [] }, ended_at: null }; S.incidents.unshift(I); }
-    if (I.status === "종료") { toast("종료된 산불의 발화 정보는 수정할 수 없습니다."); return; }
+    if (isNew) { const d = new Date(report); const key = `F-${d.getFullYear()}-${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`; const seq = S.incidents.filter((i) => i.id.startsWith(key)).length + 1; I = { id: `${key}-${pad2(seq)}`, status: "접수", real: false, intake: [], perimeters: [], official_stage: "초기대응", alert_level: "관심", reported_by: state.user, field_report: { expected_suppression_hours: null }, evacuation_state: { order_issued: false, cbs_sent: [], completed_villages: [], injuries: [] }, ended_at: null, ended_by: null }; S.incidents.unshift(I); }
     const moved = isNew || I.ignition[0] !== lng || I.ignition[1] !== lat;
-    Object.assign(I, { name, addr, ignition: [lng, lat], start_time: new Date(start).toISOString(), report_time: report ? new Date(report).toISOString() : I.report_time, report_text: text || I.report_text || "—" });
-    if (I.status === "접수") I.status = "진행 중";
-    if (!I.intake.length) I.intake = [["상황 보고자 입력", hhmm(nowSim()), false]];
-    let polyChanged = false;
-    if (rp.ring) { const before = JSON.stringify(I.actual_polygon && I.actual_polygon.ring); if (before !== JSON.stringify(rp.ring)) { I.actual_polygon = { ring: clone(rp.ring), at: nowSim().toISOString(), by: state.user, real: false }; polyChanged = true; } }
-    if (moved || polyChanged) { const st = IS(I.id); if (st.predicted) st.stale = true; }
+    Object.assign(I, { name, addr, ignition: [lng, lat], start_time: start ? new Date(start).toISOString() : null, report_time: new Date(report).toISOString(), report_text: text || I.report_text || "—", intake: clone(rp.intake) });
+    let perimNote = "", statusNote = "";
+    if (rp.ring) {
+      I.perimeters = I.perimeters || [];
+      const cp = curPerim(I), nextV = I.perimeters.reduce((m, p) => Math.max(m, p.version), 0) + 1;
+      const corrected = cp && rp.perimMode === "correct";
+      if (corrected) cp.status = "정정됨";
+      const source = /GeoJSON/.test(rp.ringSource || "") ? "GeoJSON" : /불러옴/.test(rp.ringSource || "") && cp ? cp.source : "지도 그리기";
+      I.perimeters.push({ version: nextV, status: "유효", at: nowSim().toISOString(), by: state.user, source, real: false, ring: clone(rp.ring) });
+      perimNote = ` · 실측 화선 v${nextV} ${fmt1(ringAreaHa(rp.ring))} ha${corrected ? `(${perimTag(cp)} 정정)` : ""}`;
+      if (I.status === "접수") { I.status = "진행 중"; statusNote = " · 접수 → 진행 중"; }
+    }
+    const st = IS(I.id), stale = st.predicted && (moved || !!rp.ring);
+    if (stale) st.stale = true;
     rp.editingId = I.id;
     const prevInc = state.incId; state.incId = I.id;
-    addEvent("입력", `${isNew ? "신규 산불 등록" : "발화 정보 갱신"} — ${I.name}${polyChanged ? ` · 실측 화선 ${fmt1(ringAreaHa(I.actual_polygon.ring))} ha` : ""}`);
+    addEvent("입력", `${isNew ? "산불 최초 보고" : "발화 정보 갱신"} — ${I.name}${perimNote}${statusNote}`);
     state.incId = prevInc;
     selectIncident(I.id, true); loadRepForm(I.id);
-    toast(isNew ? "새 산불을 등록했습니다." : "발화 정보를 저장했습니다.");
+    toast(`${isNew ? "산불을 '접수' 상태로 보고했습니다" : "저장했습니다"}${perimNote}${statusNote}${stale ? " · 통합지휘권자의 재예측이 필요합니다" : ""}`, 4200);
   }
 
-  // ------------------------------------------------------------------ 전산 관리자 (UC-ADMIN-01 · UC-ADMIN-02)
+  // ------------------------------------------------------------------ 전산 관리자 (UC-ADMIN-01 계정·권한 관리 · UC-ADMIN-02 진화자원 데이터 관리)
+  // 계정 발급은 이름·소속·권한만 입력하고 아이디·초기 비밀번호는 시스템이 만든다(시연용 프로토타입의 편의 방식).
+  // 발급·변경할 수 있는 권한은 조작·열람·보고이며, 관리 권한 계정은 설치 시 사전 발급한다.
+  const ISSUABLE = ["commander", "viewer", "reporter"];
+  const ID_PREFIX = { commander: "cmd", viewer: "view", reporter: "rep" };
+  const roleText = (r) => `${PERM_LABEL[r]}(${ROLE_LABEL[r]})`;
+  const genPw = () => { const c = "abcdefghjkmnpqrstuvwxyz23456789"; let s = ""; for (let i = 0; i < 8; i++) s += c[Math.floor(Math.random() * c.length)]; return s; };
+  const nextId = (role) => { const p = ID_PREFIX[role]; let n = 1; while (S.accounts.find((a) => a.id === `${p}${pad2(n)}`)) n++; return `${p}${pad2(n)}`; };
+  const today = () => ymd(new Date()).replace(/\./g, "-");
+  function showIssued(title, a, pw) {
+    openModal(title, `<table class="grid"><tr><td class="k">아이디</td><td><b>${esc(a.id)}</b></td></tr><tr><td class="k">초기 비밀번호</td><td><b class="num">${esc(pw)}</b></td></tr><tr><td class="k">이름·소속</td><td>${esc(a.name)} · ${esc(a.org || "—")}</td></tr><tr><td class="k">권한</td><td>${roleText(a.role)}</td></tr></table><div class="small muted" style="margin-top:8px">아이디·초기 비밀번호는 시스템이 만들었습니다. 시연용 프로토타입이라 화면에 그대로 표시합니다.</div>`, [{ label: "닫기" }]);
+  }
   function renderAdmin() {
-    $("#admin-user").innerHTML = `<b>${esc(state.user)}</b> · ${ROLE_LABEL.admin}`;
-    const roleOpts = (sel) => Object.entries(ROLE_LABEL).map(([k, v]) => `<option value="${k}" ${k === sel ? "selected" : ""}>${v}</option>`).join("");
-    $("#admin-accounts").innerHTML = `<div class="tot"><span>발급 <b>${S.accounts.filter((a) => a.status === "발급").length}</b></span><span>회수 <b>${S.accounts.filter((a) => a.status === "회수").length}</b></span><span>잠금 <b>${S.accounts.filter((a) => a.locked).length}</b></span><span>조작 권한 <b>${S.accounts.filter((a) => a.role === "commander" && a.status === "발급").length}</b></span><span>열람 권한 <b>${S.accounts.filter((a) => a.role === "viewer" && a.status === "발급").length}</b></span></div>
-      <table class="grid"><thead><tr><th>아이디</th><th>이름</th><th>권한</th><th>상태</th><th>발급일</th><th style="width:210px">관리</th></tr></thead><tbody>${S.accounts.map((a) => `<tr><td><b>${esc(a.id)}</b></td><td>${esc(a.name)}</td><td><select data-role="${a.id}">${roleOpts(a.role)}</select></td><td style="text-align:center"><span class="badge b-${a.status}">${a.status}</span>${a.locked ? ' <span class="badge b-즉시">잠금</span>' : a.failed ? ` <span class="small muted">실패 ${a.failed}회</span>` : ""}</td><td class="num small">${a.issued}</td><td class="actions"><button data-toggle="${a.id}">${a.status === "발급" ? "회수" : "재발급"}</button> ${a.locked || a.failed ? `<button data-unlock="${a.id}">잠금 해제</button> ` : ""}<button data-del="${a.id}">삭제</button></td></tr>`).join("")}</tbody></table>
-      <div class="form"><label>아이디<input id="ac-id" placeholder="예: cmd02"></label><label>비밀번호<input id="ac-pw" value="1234"></label><label>이름<input id="ac-name" placeholder="소속·직무"></label><label>권한<select id="ac-role">${roleOpts("viewer")}</select></label><button id="ac-add" class="primary">계정 발급</button></div>`;
-    $$("#admin-accounts [data-role]").forEach((s) => (s.onchange = () => { const a = S.accounts.find((x) => x.id === s.dataset.role); const before = ROLE_LABEL[a.role]; a.role = s.value; addEvent("관리", `계정 권한 변경 — ${a.id}: ${before} → ${ROLE_LABEL[a.role]}`); toast(`${a.id} 권한을 ${ROLE_LABEL[a.role]}(으)로 변경했습니다.`); renderAdmin(); }));
-    $$("#admin-accounts [data-toggle]").forEach((b) => (b.onclick = () => { const a = S.accounts.find((x) => x.id === b.dataset.toggle); a.status = a.status === "발급" ? "회수" : "발급"; if (a.status === "발급") a.issued = ymd(new Date()).replace(/\./g, "-"); addEvent("관리", `계정 ${a.status === "발급" ? "재발급" : "회수"} — ${a.id}(${ROLE_LABEL[a.role]})`); renderAdmin(); }));
-    $$("#admin-accounts [data-unlock]").forEach((b) => (b.onclick = () => { const a = S.accounts.find((x) => x.id === b.dataset.unlock); a.locked = false; a.failed = 0; addEvent("관리", `계정 잠금 해제 — ${a.id}(실패 횟수 초기화)`); renderAdmin(); toast(`${a.id} 잠금을 해제했습니다.`); }));
-    $$("#admin-accounts [data-del]").forEach((b) => (b.onclick = () => { const a = S.accounts.find((x) => x.id === b.dataset.del); if (a.id === state.user) { toast("로그인 중인 계정은 삭제할 수 없습니다."); return; } S.accounts.splice(S.accounts.indexOf(a), 1); addEvent("관리", `계정 삭제 — ${a.id}(${ROLE_LABEL[a.role]})`); renderAdmin(); }));
-    $("#ac-add").onclick = () => { const id = $("#ac-id").value.trim(), name = $("#ac-name").value.trim(); if (!id || !name) { toast("아이디와 이름을 입력하십시오."); return; } if (S.accounts.find((a) => a.id === id)) { toast("이미 있는 아이디입니다."); return; } const role = $("#ac-role").value; S.accounts.push({ id, pw: $("#ac-pw").value || "1234", name, role, status: "발급", issued: ymd(new Date()).replace(/\./g, "-") }); addEvent("관리", `계정 발급 — ${id}(${ROLE_LABEL[role]}, ${name})`); renderAdmin(); toast(`${id} 계정을 발급했습니다.`); };
+    $("#admin-user").innerHTML = `<b>${esc(state.user)}</b> · ${ROLE_LABEL.admin}(${PERM_LABEL.admin})`;
+    const roleOpts = (sel) => ISSUABLE.map((k) => `<option value="${k}" ${k === sel ? "selected" : ""}>${roleText(k)}</option>`).join("");
+    const cnt = (f) => S.accounts.filter(f).length;
+    $("#admin-accounts").innerHTML = `<div class="tot"><span>발급 <b>${cnt((a) => a.status === "발급")}</b></span><span>회수 <b>${cnt((a) => a.status === "회수")}</b></span><span>잠금 <b>${cnt((a) => a.locked)}</b></span>${ISSUABLE.map((r) => `<span>${PERM_LABEL[r]} 권한 <b>${cnt((a) => a.role === r && a.status === "발급")}</b></span>`).join("")}</div>
+      <table class="grid"><thead><tr><th>아이디</th><th>이름</th><th>소속</th><th>권한</th><th>상태</th><th>발급일</th><th style="width:196px">관리</th></tr></thead><tbody>${S.accounts.map((a) => `<tr><td><b>${esc(a.id)}</b></td><td>${esc(a.name)}</td><td class="small">${esc(a.org || "—")}</td><td>${a.role === "admin" ? `<span class="small">${roleText("admin")}</span>` : `<select data-role="${a.id}">${roleOpts(a.role)}</select>`}</td><td style="text-align:center"><span class="badge b-${a.status}">${a.status}</span>${a.locked ? ' <span class="badge b-즉시">잠금</span>' : a.failed ? ` <span class="small muted">실패 ${a.failed}회</span>` : ""}</td><td class="num small">${a.issued}</td><td class="actions">${a.status === "발급" && a.id !== state.user ? `<button data-revoke="${a.id}">회수</button> ` : ""}<button data-reissue="${a.id}">재발급</button> ${a.locked || a.failed ? `<button data-unlock="${a.id}">잠금 해제</button> ` : ""}<button data-del="${a.id}">삭제</button></td></tr>`).join("")}</tbody></table>
+      <div class="form"><label>이름 *<input id="ac-name" placeholder="예: 통합지휘권자 2"></label><label>소속 *<input id="ac-org" placeholder="예: 의성군"></label><label>권한 *<select id="ac-role"><option value="">선택</option>${roleOpts("")}</select></label><button id="ac-add" class="primary">계정 발급</button></div>`;
+    // A1: 권한 변경은 저장 즉시 적용(로그인 중인 세션 포함)
+    $$("#admin-accounts [data-role]").forEach((s) => (s.onchange = () => { const a = S.accounts.find((x) => x.id === s.dataset.role); const before = roleText(a.role); a.role = s.value; addEvent("관리", `계정 권한 변경 — ${a.id}: ${before} → ${roleText(a.role)}`); toast(`${a.id} 권한을 ${roleText(a.role)}(으)로 바꿨습니다. 즉시 적용됩니다.`); renderAdmin(); }));
+    $$("#admin-accounts [data-revoke]").forEach((b) => (b.onclick = () => { const a = S.accounts.find((x) => x.id === b.dataset.revoke); a.status = "회수"; addEvent("관리", `계정 회수 — ${a.id}(${ROLE_LABEL[a.role]})`); toast(`${a.id} 계정을 회수했습니다. 이후 로그인이 막힙니다.`); renderAdmin(); }));
+    // A2: 재발급 — 초기 비밀번호를 다시 발급(회수된 계정은 다시 발급 상태로)
+    $$("#admin-accounts [data-reissue]").forEach((b) => (b.onclick = () => { const a = S.accounts.find((x) => x.id === b.dataset.reissue); const pw = genPw(); a.pw = pw; const wasRevoked = a.status === "회수"; a.status = "발급"; a.issued = today(); addEvent("관리", `계정 재발급 — ${a.id}(초기 비밀번호 재발급${wasRevoked ? ", 회수 해제" : ""})`); renderAdmin(); showIssued("초기 비밀번호 재발급", a, pw); }));
+    // A3: 잠금 해제 — 실패 횟수 0으로 초기화
+    $$("#admin-accounts [data-unlock]").forEach((b) => (b.onclick = () => { const a = S.accounts.find((x) => x.id === b.dataset.unlock); a.locked = false; a.failed = 0; addEvent("관리", `계정 잠금 해제 — ${a.id}(실패 횟수 0으로 초기화)`); renderAdmin(); toast(`${a.id} 잠금을 해제했습니다.`); }));
+    // A4: 삭제 — 로그인 중인 자기 계정은 삭제 불가
+    $$("#admin-accounts [data-del]").forEach((b) => (b.onclick = () => { const a = S.accounts.find((x) => x.id === b.dataset.del); if (a.id === state.user) { toast("로그인 중인 자기 계정은 삭제할 수 없습니다."); return; } S.accounts.splice(S.accounts.indexOf(a), 1); addEvent("관리", `계정 삭제 — ${a.id}(${ROLE_LABEL[a.role]})`); renderAdmin(); }));
+    $("#ac-add").onclick = () => {
+      const name = $("#ac-name").value.trim(), org = $("#ac-org").value.trim(), role = $("#ac-role").value, miss = [];
+      [["#ac-name", name, "이름"], ["#ac-org", org, "소속"], ["#ac-role", role, "권한"]].forEach(([id, v, l]) => { $(id).classList.toggle("invalid", !v); if (!v) miss.push(l); });
+      if (miss.length) { toast(`빈 칸이 있어 발급할 수 없습니다: ${miss.join(", ")}`); return; }
+      const id = nextId(role), pw = genPw(), a = { id, pw, name, org, role, status: "발급", issued: today() };
+      S.accounts.push(a); addEvent("관리", `계정 발급 — ${id}(${ROLE_LABEL[role]}, ${name}·${org})`); renderAdmin(); showIssued("계정 발급 완료", a, pw);
+    };
 
     const by = resSummary();
     $("#admin-resources").innerHTML = `<div class="tot">${RTYPES.map((t) => `<span>${t} 보유 <b>${by[t].보유}</b> · 투입 ${by[t].투입} · 대기 ${by[t].대기} · 정비 ${by[t].정비}</span>`).join("")}</div>
-      <div style="max-height:46vh;overflow:auto"><table class="grid"><thead><tr><th>구분</th><th>명칭·호출부호</th><th>소속</th><th>수량</th><th>상태</th><th style="width:110px">관리</th></tr></thead><tbody>${S.resources.map((r) => `<tr><td><select data-rtype="${r.id}">${RTYPES.map((t) => `<option ${t === r.type ? "selected" : ""}>${t}</option>`).join("")}</select></td><td><input data-rname="${r.id}" value="${esc(r.name)}" style="width:150px"></td><td><input data-rorg="${r.id}" value="${esc(r.org)}" style="width:140px"></td><td><input data-rqty="${r.id}" type="number" min="1" value="${r.qty}" style="width:56px" ${r.type !== "인력" ? "disabled" : ""}></td><td><select data-rstatus="${r.id}">${["투입", "대기", "정비"].map((s) => `<option ${s === r.status ? "selected" : ""}>${s}</option>`).join("")}</select></td><td class="actions"><button data-rsave="${r.id}">저장</button> <button data-rdel="${r.id}">삭제</button></td></tr>`).join("")}</tbody></table></div>
-      <div class="form"><label>구분<select id="rs-type">${RTYPES.map((t) => `<option>${t}</option>`).join("")}</select></label><label>명칭·호출부호<input id="rs-name" placeholder="예: KFS-H05"></label><label>소속<input id="rs-org" placeholder="예: 산림항공본부"></label><label>수량(인력만)<input id="rs-qty" type="number" min="1" value="1"></label><label>상태<select id="rs-status"><option>대기</option><option>투입</option><option>정비</option></select></label><button id="rs-add" class="primary">자원 등록</button></div>`;
-    $$("#admin-resources [data-rsave]").forEach((b) => (b.onclick = () => { const id = b.dataset.rsave, r = S.resources.find((x) => x.id === id); r.type = $(`[data-rtype="${id}"]`).value; r.name = $(`[data-rname="${id}"]`).value.trim() || r.name; r.org = $(`[data-rorg="${id}"]`).value.trim(); r.qty = r.type === "인력" ? Math.max(1, Number($(`[data-rqty="${id}"]`).value) || 1) : 1; r.status = $(`[data-rstatus="${id}"]`).value; if (r.type === "인력" && r.status === "투입" && !r.pos) r.pos = [inc().ignition[0] + 0.004, inc().ignition[1] + 0.003]; addEvent("관리", `진화자원 수정 — ${r.type} ${r.name}(${r.org}, ${r.type === "인력" ? r.qty + "명" : "1대"}, ${r.status})`); renderAdmin(); toast(`${r.name} 저장`); }));
-    $$("#admin-resources [data-rdel]").forEach((b) => (b.onclick = () => { const r = S.resources.find((x) => x.id === b.dataset.rdel); S.resources.splice(S.resources.indexOf(r), 1); addEvent("관리", `진화자원 삭제 — ${r.type} ${r.name}(${r.org})`); renderAdmin(); }));
-    $("#rs-add").onclick = () => { const name = $("#rs-name").value.trim(); if (!name) { toast("명칭을 입력하십시오."); return; } const type = $("#rs-type").value; const r = { id: "r" + Date.now().toString(36), type, name, org: $("#rs-org").value.trim(), qty: type === "인력" ? Math.max(1, Number($("#rs-qty").value) || 1) : 1, status: $("#rs-status").value }; S.resources.push(r); addEvent("관리", `진화자원 등록 — ${r.type} ${r.name}(${r.org}, ${r.type === "인력" ? r.qty + "명" : "1대"}, ${r.status})`); renderAdmin(); toast(`${name} 등록`); };
+      <div style="max-height:46vh;overflow:auto"><table class="grid"><thead><tr><th>구분 *</th><th>명칭(호출부호) *</th><th>소속 *</th><th>수량 *</th><th>배치 위치</th><th>상태</th><th style="width:92px">관리</th></tr></thead><tbody>${S.resources.map((r) => `<tr><td><select data-rtype="${r.id}">${RTYPES.map((t) => `<option ${t === r.type ? "selected" : ""}>${t}</option>`).join("")}</select></td><td><input data-rname="${r.id}" value="${esc(r.name)}" style="width:128px"></td><td><input data-rorg="${r.id}" value="${esc(r.org)}" style="width:118px"></td><td><input data-rqty="${r.id}" type="number" min="1" value="${r.qty}" style="width:50px" ${r.type !== "인력" ? "disabled" : ""}></td><td><input data-rbase="${r.id}" value="${esc(r.base || "")}" style="width:120px"></td><td><select data-rstatus="${r.id}">${["투입", "대기", "정비"].map((s) => `<option ${s === r.status ? "selected" : ""}>${s}</option>`).join("")}</select></td><td class="actions"><button data-rsave="${r.id}">저장</button> <button data-rdel="${r.id}">삭제</button></td></tr>`).join("")}</tbody></table></div>
+      <div class="form"><label>구분 *<select id="rs-type">${RTYPES.map((t) => `<option>${t}</option>`).join("")}</select></label><label>명칭(호출부호) *<input id="rs-name" placeholder="예: 산림 101호, KFS-H05"></label><label>소속 *<input id="rs-org" placeholder="예: 산림항공본부"></label><label>수량 *<input id="rs-qty" type="number" min="1" value="1" title="인력은 명, 헬기·차량은 1"></label><label>배치 위치<input id="rs-base" placeholder="예: 안동 산림항공관리소"></label><label>상태<select id="rs-status"><option>대기</option><option>투입</option><option>정비</option></select></label><button id="rs-add" class="primary">자원 등록</button></div>`;
+    // 필수 값(구분·명칭(호출부호)·소속·수량) 검사 — 빠지면 저장을 막고 빠진 칸을 표시(E1)
+    const checkRes = (fields) => { const miss = []; fields.forEach(([el, ok, l]) => { el.classList.toggle("invalid", !ok); if (!ok) miss.push(l); }); if (miss.length) toast(`필수 값이 빠져 저장할 수 없습니다: ${miss.join(", ")}`); return !miss.length; };
+    $("#rs-type").onchange = () => { const p = $("#rs-type").value === "인력"; $("#rs-qty").disabled = !p; if (!p) $("#rs-qty").value = 1; };
+    $("#rs-type").onchange();
+    $$("#admin-resources [data-rtype]").forEach((s) => (s.onchange = () => { const q = $(`[data-rqty="${s.dataset.rtype}"]`); q.disabled = s.value !== "인력"; if (s.value !== "인력") q.value = 1; }));
+    $$("#admin-resources [data-rsave]").forEach((b) => (b.onclick = () => {
+      const id = b.dataset.rsave, r = S.resources.find((x) => x.id === id), el = (k) => $(`[data-${k}="${id}"]`);
+      const type = el("rtype").value, name = el("rname").value.trim(), org = el("rorg").value.trim(), qty = Number(el("rqty").value);
+      if (!checkRes([[el("rname"), !!name, "명칭(호출부호)"], [el("rorg"), !!org, "소속"], [el("rqty"), Number.isInteger(qty) && qty >= 1, "수량"]])) return;
+      Object.assign(r, { type, name, org, qty: type === "인력" ? qty : 1, base: el("rbase").value.trim(), status: el("rstatus").value });
+      if (r.type === "인력" && r.status === "투입" && !r.pos) r.pos = [inc().ignition[0] + 0.004, inc().ignition[1] + 0.003];
+      addEvent("관리", `진화자원 수정 — ${r.type} ${r.name}(${r.org}, ${r.type === "인력" ? r.qty + "명" : "1대"}, ${r.status})`); renderAdmin(); toast(`${r.name} 저장`);
+    }));
+    $$("#admin-resources [data-rdel]").forEach((b) => (b.onclick = () => { const r = S.resources.find((x) => x.id === b.dataset.rdel); if (r.status === "투입") { toast("산불에 투입 중인 자원은 삭제할 수 없습니다."); return; } S.resources.splice(S.resources.indexOf(r), 1); addEvent("관리", `진화자원 삭제 — ${r.type} ${r.name}(${r.org})`); renderAdmin(); }));
+    $("#rs-add").onclick = () => {
+      const type = $("#rs-type").value, name = $("#rs-name").value.trim(), org = $("#rs-org").value.trim(), qty = Number($("#rs-qty").value);
+      if (!checkRes([[$("#rs-name"), !!name, "명칭(호출부호)"], [$("#rs-org"), !!org, "소속"], [$("#rs-qty"), Number.isInteger(qty) && qty >= 1, "수량"]])) return;
+      const r = { id: "r" + Date.now().toString(36), type, name, org, base: $("#rs-base").value.trim(), qty: type === "인력" ? qty : 1, status: $("#rs-status").value };
+      S.resources.push(r); addEvent("관리", `진화자원 등록 — ${r.type} ${r.name}(${r.org}, ${r.type === "인력" ? r.qty + "명" : "1대"}, ${r.status})`); renderAdmin(); toast(`${name} 등록`);
+    };
   }
 
-  // ------------------------------------------------------------------ 역할 · 로그인
+  // ------------------------------------------------------------------ 역할 · 로그인 (UC-AUTH-01)
   function applyRole() {
     const r = state.role;
     $$(".commander-only").forEach((el) => el.classList.toggle("role-hide", r !== "commander"));
@@ -914,9 +1078,12 @@
     const acc = S.accounts.find((a) => a.role === role && a.status === "발급") || S.accounts.find((a) => a.role === role);
     if (acc) { $("#login-id").value = acc.id; $("#login-pw").value = acc.pw || ""; }
   }
-  // SER-001: 같은 아이디로 5회 연속 실패하면 잠금(전산 관리자가 해제), 30분 무조작 시 자동 로그아웃
-  const LOCK_AFTER = 5, IDLE_MS = 30 * 60 * 1000;
+  // SER-001: 잠금 여부를 먼저 확인하고, 5회 연속 실패하면 잠금(전산 관리자만 해제).
+  // 로그인하면 권한을 담은 세션 토큰(JWT 대응, 만료 30분)을 발급하고, 토큰이 유효한 동안은 새로고침해도 바로 진입한다(A1)
+  const LOCK_AFTER = 5, TOKEN_MS = 30 * 60 * 1000, TOKEN_KEY = "wf-mock-token";
   const LOCK_MSG = "계정이 잠겼습니다. 전산 관리자에게 문의하십시오.";
+  const saveToken = () => { try { sessionStorage.setItem(TOKEN_KEY, JSON.stringify({ user: state.user, role: state.role, exp: state.tokenExp })); } catch (e) { /* 저장소를 못 쓰면 토큰 복원만 생략 */ } };
+  const clearToken = () => { try { sessionStorage.removeItem(TOKEN_KEY); } catch (e) { /* 무시 */ } };
   function login() {
     const id = $("#login-id").value.trim(), pw = $("#login-pw").value, role = $("#login-role").value, err = $("#login-err");
     const fail = (msg) => { err.textContent = msg; toast(msg, 2800); };
@@ -926,26 +1093,39 @@
     if (acc && acc.locked) { fail(LOCK_MSG); return; }
     if (!acc || (acc.pw || "") !== pw || acc.role !== role) {
       if (acc) { acc.failed = (acc.failed || 0) + 1; if (acc.failed >= LOCK_AFTER) { acc.locked = true; addEvent("시스템", `${acc.id} 계정 잠금(로그인 ${LOCK_AFTER}회 연속 실패)`); fail(LOCK_MSG); return; } }
-      fail("잘못된 아이디 또는 비밀번호입니다."); return;
+      fail("아이디 또는 비밀번호가 올바르지 않습니다."); return;
     }
-    if (acc.status === "회수") { fail("회수된 계정입니다. 전산 관리자에게 발급을 요청하십시오."); return; }
-    acc.failed = 0; state.lastActive = Date.now();
-    state.user = id; state.role = acc.role; state.loginAt = state.loginAt || Date.now();
+    if (acc.status === "회수") { fail("회수된 계정입니다. 전산 관리자에게 문의하십시오."); return; }
+    enterSession(acc, Date.now() + TOKEN_MS);
+    addEvent("시스템", `${acc.id} 로그인(${ROLE_LABEL[acc.role]})`);
+    if (state.role === "reporter") toast("산불 목록에서 산불을 고르거나 「새 산불 보고」로 발화 정보를 입력하십시오.", 3600);
+    else if (state.role === "commander" && !IS().predicted) toast("「확산예측」에서 「확산 예측 실행」을 누르면 예측과 진화·대피 대응 제안서가 생성됩니다.", 4200);
+  }
+  // 권한별 첫 화면: 통합지휘권자·열람자 = 진행 중 산불의 통합 상황도, 상황 보고자 = 상황 입력 화면, 전산 관리자 = 계정·진화자원 데이터 관리
+  function enterSession(acc, exp) {
+    acc.failed = 0;
+    state.user = acc.id; state.role = acc.role; state.loginAt = state.loginAt || Date.now(); state.tokenExp = exp; saveToken();
     $("#login-overlay").style.display = "none";
-    $("#chat-log").innerHTML = ""; state.chatCtx = null;
+    $("#chat-log").innerHTML = ""; state.chatCtx = null; setCorrMode(false);
     if (!map) initMap();
     applyRole();
-    if (state.role === "admin") { renderAdmin(); addEvent("시스템", `${id} 로그인(${ROLE_LABEL.admin})`); return; }
+    if (state.role === "admin") { renderAdmin(); return; }
     rebuildCrewMarkers(); renderAll(); setT(IS().t);
-    addEvent("시스템", `${id} 로그인(${ROLE_LABEL[state.role]})`);
-    if (state.role === "reporter") { loadRepForm(state.incId); showTab("status"); toast("산불 목록에서 산불을 고르거나 「새 산불」로 발화 정보를 입력하십시오.", 3600); return; }
+    if (state.role === "reporter") loadRepForm(state.incId);
     showTab("status");
-    if (state.role === "viewer" && !IS().predicted && inc().status !== "종료") runPrediction(true);
-    else if (state.role === "commander" && !IS().predicted) toast("「확산예측」 탭에서 「확산 예측 실행」을 누르면 예측과 대응 제안이 생성됩니다.", 4200);
   }
-  function logout(reason) { pause(); cancelModes(); addEvent("시스템", reason ? `${state.user} 자동 로그아웃(${reason})` : `${state.user} 로그아웃`); state.role = null; $("#admin-screen").classList.remove("on"); $("#login-overlay").style.display = ""; $("#login-err").textContent = ""; if (reason) { $("#login-err").textContent = `${reason}으로 자동 로그아웃되었습니다.`; toast(`${reason}으로 자동 로그아웃되었습니다.`, 4000); } }
-  function checkIdle() { if (state.role && Date.now() - state.lastActive >= IDLE_MS) logout("30분 무조작"); }
-  function renderAll() { if (!state.role || state.role === "admin") return; renderHeader(); if (state.role === "reporter") { renderReporter(); return; } renderStatus(); renderPredict(); renderResources(); renderProposal(); renderHistory(); }
+  function resumeSession() {
+    let t = null; try { t = JSON.parse(sessionStorage.getItem(TOKEN_KEY) || "null"); } catch (e) { t = null; }
+    if (!t || !t.exp || t.exp <= Date.now()) { clearToken(); return; }
+    const acc = S.accounts.find((a) => a.id === t.user);
+    if (!acc || acc.status !== "발급" || acc.locked) { clearToken(); return; }
+    enterSession(acc, t.exp);
+    toast("유효한 세션 토큰이 있어 로그인 없이 진입했습니다.", 3000);
+  }
+  // A2: 로그아웃하면 세션 토큰을 폐기하고 로그인 화면으로 돌아간다
+  function logout(reason) { pause(); cancelModes(); addEvent("시스템", reason ? `${state.user} 자동 로그아웃(${reason})` : `${state.user} 로그아웃`); clearToken(); state.tokenExp = null; state.role = null; $("#admin-screen").classList.remove("on"); $("#login-overlay").style.display = ""; $("#login-err").textContent = ""; if (reason) { $("#login-err").textContent = `${reason}으로 로그아웃되었습니다. 다시 로그인하십시오.`; toast(`${reason}으로 로그아웃되었습니다.`, 4000); } }
+  function checkToken() { if (state.role && state.tokenExp && Date.now() >= state.tokenExp) logout("세션 만료(30분)"); }
+  function renderAll() { if (!state.role || state.role === "admin") return; renderHeader(); if (state.role === "reporter") { renderReporter(); return; } renderStatus(); renderPredict(); renderRisk(); renderResources(); renderProposal(); renderHistory(); }
 
   // ------------------------------------------------------------------ 바인딩
   function bind() {
@@ -965,8 +1145,6 @@
     $$(".ip-tab").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
     $("#ip-close").onclick = () => { showPanel("#info-panel", false); $$(".menu-btn").forEach((m) => m.classList.remove("on")); };
     $("#ip-fit").onclick = () => map && map.flyTo({ center: inc().ignition, zoom: 12.5, duration: 800 });
-    $("#st-all").onchange = (e) => { state.showEnded = e.target.checked; renderStatus(); };
-    $("#rep-all").onchange = (e) => { state.rep.showEnded = e.target.checked; renderReporter(); };
     $$(".vtab").forEach((v) => (v.onclick = () => { if (v.dataset.v === "fire") showPanel(state.role === "reporter" ? "#rep-panel" : "#info-panel"); else showPanel("#legend-panel"); }));
     $("#lg-close").onclick = () => showPanel("#legend-panel", false);
     $("#ts-zoom-in").onclick = () => map && map.zoomIn(); $("#ts-zoom-out").onclick = () => map && map.zoomOut();
@@ -975,26 +1153,27 @@
     $("#ts-sat").onclick = () => { state.sat = !state.sat; applySat(); };
     $("#btn-play").onclick = play; $("#btn-stop").onclick = () => { pause(); setT(0); };
     $("#time-slider").oninput = (e) => { pause(); setT(Number(e.target.value)); };
-    $("#btn-predict").onclick = () => runPrediction(false);
+    $("#btn-predict").onclick = () => runPrediction();
     $$(".ptab").forEach((b) => (b.onclick = () => { state.axis = b.dataset.axis; $$(".ptab").forEach((x) => x.classList.toggle("on", x === b)); renderProposal(); }));
     $$(".pfilter").forEach((b) => (b.onclick = () => { state.filter = b.dataset.f; $$(".pfilter").forEach((x) => x.classList.toggle("on", x === b)); renderProposal(); }));
     $("#btn-ev-close").onclick = () => $("#evidence-drawer").classList.remove("on");
-    $("#btn-regenerate").onclick = () => { if (inc().status === "종료") { toast("종료된 산불입니다."); return; } if (!IS().predicted) { showTab("predict"); runPrediction(false); return; } const prev = IS().currentRun; const run = generateProposal("수동 갱신"); if (prev) showDiff(prev, run); };
     $("#chat-form").onsubmit = (e) => { e.preventDefault(); sendChat(); };
+    $("#btn-corr").onclick = () => { setCorrMode(!state.corrMode); $("#chat-input").focus(); };
     // 상황 보고자
-    $("#rep-new").onclick = () => { loadRepForm(null); toast("새 산불 정보를 입력하십시오."); };
+    $("#rep-new").onclick = () => { loadRepForm(null); toast("새 산불의 발화 위치·일시·신고 내용·접수 기록을 입력하십시오. 화선이 있으면 함께 그려 제출합니다."); };
+    $("#rep-perim").onclick = startPerimReport;
+    $("#ik-add").onclick = addIntakeRow;
     $("#rep-pick").onclick = () => { state.rep.pickMode = !state.rep.pickMode; state.rep.drawMode = false; renderReporter(); };
     $("#rep-draw").onclick = () => { state.rep.drawMode = !state.rep.drawMode; state.rep.pickMode = false; state.rep.pts = []; renderReporter(); };
     $("#rep-draw-done").onclick = finishDraw;
-    $("#rep-draw-clear").onclick = () => { state.rep.ring = null; state.rep.pts = []; state.rep.drawMode = false; renderReporter(); };
+    $("#rep-draw-clear").onclick = () => { state.rep.ring = null; state.rep.ringSource = null; state.rep.pts = []; state.rep.drawMode = false; renderReporter(); };
     $("#rep-geojson").onclick = openGeoJsonModal;
     $("#rep-save").onclick = saveReport;
     ["#rep-lng", "#rep-lat"].forEach((id) => ($(id).oninput = () => { const lng = Number($("#rep-lng").value), lat = Number($("#rep-lat").value); if (map && isFinite(lng) && isFinite(lat) && lng && lat) { state.markers["pick"].setLngLat([lng, lat]); state.markers["pick"].getElement().style.display = ""; } }));
     $("#modal-bg").addEventListener("click", (e) => { if (e.target.id === "modal-bg") closeModal(); });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeModal(); $("#evidence-drawer").classList.remove("on"); cancelModes(); } });
     ["#info-panel", "#left-panel", "#legend-panel", "#chat-panel", "#rep-panel"].forEach((id) => makeDraggable($(id)));
-    ["mousedown", "keydown", "wheel", "touchstart", "mousemove"].forEach((ev) => document.addEventListener(ev, () => { state.lastActive = Date.now(); }, { passive: true }));
-    setInterval(checkIdle, 15000);
+    setInterval(checkToken, 15000);
   }
 
   // 마커 스타일 (위성영상 위 가독성: 흰 라벨)
@@ -1017,7 +1196,9 @@
     .mk.emd { font-size:11px; font-weight:700; color:#fff; letter-spacing:.06em; opacity:.85; pointer-events:none; text-shadow:0 0 3px #000, 0 0 3px #000; }
     body:not(.satmap) .mk.emd { color:#334155; text-shadow:0 0 3px #fff, 0 0 3px #fff; }
     body.reporter .mk.village .lb, body.reporter .mk.shelter .lb { font-size:10px; }
-    .maplibregl-marker { z-index:2; } .mk.f0, .mk.pick { z-index:5; }`;
+    .maplibregl-marker { z-index:2; } .mk.f0, .mk.pick { z-index:5; }
+    .seg { display:inline-flex; } .seg button { font-size:11px; padding:0 7px; border-radius:0; } .seg button + button { border-left:0; } .seg button.on { background:#444; color:#fff; border-color:#222; }
+    .invalid { border-color:#d0342c !important; background:#fff1f0 !important; }`;
   document.head.appendChild(css);
 
   // ------------------------------------------------------------------ 시작
@@ -1025,5 +1206,6 @@
   bind(); renderLegend();
   $("#ip-clock").textContent = `${ymd(T0)} ${hhmm(T0)}`;
   document.body.classList.add("satmap");
-  window.__mock = { state, S, get map() { return map; }, ringAreaHa, firePolygon, runPrediction, generateProposal, computeRisk, IS, inc, events: state.events, checkIdle, IDLE_MS };
+  window.__mock = { state, S, get map() { return map; }, ringAreaHa, firePolygon, runPrediction, generateProposal, computeRisk, riskOf, curPerim, IS, inc, events: state.events, checkToken, TOKEN_MS };
+  resumeSession();
 })();
