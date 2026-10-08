@@ -342,7 +342,7 @@ window.SCENARIO = {
       {
         key: "weather",
         name: "기상",
-        weight: 0.35,
+        weight: 0.372,
         score: 4.2,
         vars: "풍속·상대습도·기온·건조특보(기상청 단기예보)",
         values: null,
@@ -350,7 +350,7 @@ window.SCENARIO = {
       {
         key: "terrain",
         name: "지형",
-        weight: 0.3,
+        weight: 0.287,
         score: 3.6,
         vars: "경사·사면 방향·고도(DEM 30 m 격자)",
         values: "경사 21° · 남서 사면 · 고도 230 m",
@@ -358,7 +358,7 @@ window.SCENARIO = {
       {
         key: "fuel",
         name: "연료",
-        weight: 0.25,
+        weight: 0.266,
         score: 3.9,
         vars: "임상·임목 밀도·낙엽층(임상도)",
         values: "침엽수림(소나무) · 임목 밀도 높음 · 낙엽층 두꺼움",
@@ -366,7 +366,7 @@ window.SCENARIO = {
       {
         key: "infra",
         name: "인프라",
-        weight: 0.1,
+        weight: 0.074,
         score: 2.4,
         vars: "도로 접근성·주거 밀집·송전시설 거리",
         values: "도로 1.2 km · 주거 밀집 낮음 · 송전선 0.8 km",
