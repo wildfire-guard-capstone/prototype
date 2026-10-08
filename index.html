@@ -1,568 +1,2575 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>산불 대응 AI 의사결정 지원 시스템</title>
-<meta name="description" content="확산 예측 기반 산불 대응 의사결정 지원 시스템 시연 화면(산불상황관제시스템 화면 구성을 참고). 합성 데이터 사용.">
-<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
-<style>
-  :root { --red: #d0342c; --blue: #2f5fb3; --blue2: #3d6bc4; --gray: #8f8f8f; --line: #c9c9c9; --line2: #d9d9d9; --cell: #f3f3f3; --fg: #222; --fg2: #555; --fg3: #888; --panel-w: 410px; }
-  * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; background: #e6e6e6; color: var(--fg); font: 12px/1.45 "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", Dotum, sans-serif; }
-  button { font: inherit; color: var(--fg); background: linear-gradient(#fdfdfd, #e9e9e9); border: 1px solid #b5b5b5; border-radius: 3px; padding: 2px 8px; cursor: pointer; line-height: 1.5; display: inline-flex; align-items: center; gap: 4px; }
-  button:hover { background: linear-gradient(#fff, #e0e0e0); }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  button.red { background: #fff; border: 1px solid var(--red); color: var(--red); font-weight: 700; }
-  button.red.on, button.red:hover { background: var(--red); color: #fff; }
-  button.blue { background: var(--blue); border-color: #23499a; color: #fff; }
-  button.blue.off { background: #b3bfd8; border-color: #9aa8c8; color: #fff; }
-  button.blue:hover { background: #244f9e; }
-  button.primary { background: linear-gradient(#e4574e, #b7261f); border-color: #8d1d18; color: #fff; font-weight: 700; }
-  button.primary:hover { background: linear-gradient(#ef655c, #c62c24); }
-  button.dark { background: #4b4b4b; border-color: #333; color: #fff; }
-  button svg, .ibtn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  input, select, textarea { font: inherit; color: var(--fg); background: #fff; border: 1px solid #b5b5b5; border-radius: 2px; padding: 2px 5px; }
-  input[type=range] { padding: 0; accent-color: var(--red); }
-  a { color: #1a4fb0; }
-  h1, h2, h3, h4 { margin: 0; font-weight: 700; }
-  .muted { color: var(--fg3); } .small { font-size: 11px; } .num { font-variant-numeric: tabular-nums; }
-  .info { display: inline-flex; width: 13px; height: 13px; border-radius: 50%; border: 1px solid #999; color: #777; font-size: 9px; font-weight: 700; align-items: center; justify-content: center; margin-left: 3px; vertical-align: -1px; cursor: help; position: relative; font-style: normal; background: #fff; }
-  .info::before { content: "i"; }
-  .info::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); width: max-content; max-width: 260px; background: #fffbe6; color: #333; border: 1px solid #c9b76b; padding: 6px 9px; border-radius: 3px; font-size: 11px; font-weight: 400; line-height: 1.45; white-space: normal; opacity: 0; pointer-events: none; transition: opacity .12s; box-shadow: 0 3px 10px rgba(0,0,0,.25); z-index: 90; text-align: left; }
-  .info:hover::after { opacity: 1; }
-  .info.l::after { left: auto; right: -6px; transform: none; }
-  .info.b::after { bottom: auto; top: calc(100% + 6px); }
-  .badge { display: inline-block; padding: 1px 6px; border-radius: 2px; font-size: 11px; font-weight: 700; white-space: nowrap; border: 1px solid transparent; }
-  .b-즉시 { background: #fde8e6; color: #b3261e; border-color: #f1b8b3; }
-  .b-대기 { background: #fff4d6; color: #8a5a00; border-color: #f0d48a; }
-  .b-협의 { background: #ece6fb; color: #4d2e9c; border-color: #cbbdf0; }
-  .b-요청 { background: #e3eefc; color: #1a4fb0; border-color: #b7cdf3; }
-  .b-없음 { background: #f5f5f5; color: #999; border-color: #e0e0e0; }
-  .b-진행 { background: #fde8e6; color: #b3261e; border-color: #f1b8b3; }
-  .b-접수 { background: #fff4d6; color: #8a5a00; border-color: #f0d48a; }
-  .b-종료 { background: #e8e8e8; color: #555; border-color: #ccc; }
-  .b-발급 { background: #e4f4e8; color: #1e6b36; border-color: #b6dfc2; }
-  .b-회수 { background: #efefef; color: #777; border-color: #d0d0d0; }
-  .b-투입 { background: #e4f4e8; color: #1e6b36; border-color: #b6dfc2; }
-  .b-정비 { background: #efefef; color: #777; border-color: #d0d0d0; }
-  table.grid { width: 100%; border-collapse: collapse; font-size: 12px; }
-  table.grid th, table.grid td { border: 1px solid var(--line2); padding: 4px 6px; vertical-align: middle; }
-  table.grid th { background: var(--cell); color: #333; font-weight: 700; text-align: center; }
-  table.grid td.k { background: var(--cell); color: #333; font-weight: 700; text-align: center; white-space: nowrap; width: 66px; }
-  table.grid tr.clickable { cursor: pointer; } table.grid tr.clickable:hover td { background: #f7fbff; }
-  table.grid tr.sel td { background: #fff8e1; }
-  table.grid td.y { background: #ffff99; } table.grid td.g { background: #99ff99; }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>산불 대응 AI 의사결정 지원 시스템</title>
+    <meta
+      name="description"
+      content="확산 예측 기반 산불 대응 의사결정 지원 시스템 시연 화면(산불상황관제시스템 화면 구성을 참고). 합성 데이터 사용."
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --red: #d0342c;
+        --blue: #2f5fb3;
+        --blue2: #3d6bc4;
+        --gray: #8f8f8f;
+        --line: #c9c9c9;
+        --line2: #d9d9d9;
+        --cell: #f3f3f3;
+        --fg: #222;
+        --fg2: #555;
+        --fg3: #888;
+        --panel-w: 410px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #e6e6e6;
+        color: var(--fg);
+        font:
+          12px/1.45 "Malgun Gothic",
+          "맑은 고딕",
+          "Apple SD Gothic Neo",
+          "Noto Sans KR",
+          Dotum,
+          sans-serif;
+      }
+      button {
+        font: inherit;
+        color: var(--fg);
+        background: linear-gradient(#fdfdfd, #e9e9e9);
+        border: 1px solid #b5b5b5;
+        border-radius: 3px;
+        padding: 2px 8px;
+        cursor: pointer;
+        line-height: 1.5;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      button:hover {
+        background: linear-gradient(#fff, #e0e0e0);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      button.red {
+        background: #fff;
+        border: 1px solid var(--red);
+        color: var(--red);
+        font-weight: 700;
+      }
+      button.red.on,
+      button.red:hover {
+        background: var(--red);
+        color: #fff;
+      }
+      button.blue {
+        background: var(--blue);
+        border-color: #23499a;
+        color: #fff;
+      }
+      button.blue.off {
+        background: #b3bfd8;
+        border-color: #9aa8c8;
+        color: #fff;
+      }
+      button.blue:hover {
+        background: #244f9e;
+      }
+      button.primary {
+        background: linear-gradient(#e4574e, #b7261f);
+        border-color: #8d1d18;
+        color: #fff;
+        font-weight: 700;
+      }
+      button.primary:hover {
+        background: linear-gradient(#ef655c, #c62c24);
+      }
+      button.dark {
+        background: #4b4b4b;
+        border-color: #333;
+        color: #fff;
+      }
+      button svg,
+      .ibtn svg {
+        width: 14px;
+        height: 14px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      input,
+      select,
+      textarea {
+        font: inherit;
+        color: var(--fg);
+        background: #fff;
+        border: 1px solid #b5b5b5;
+        border-radius: 2px;
+        padding: 2px 5px;
+      }
+      input[type="range"] {
+        padding: 0;
+        accent-color: var(--red);
+      }
+      a {
+        color: #1a4fb0;
+      }
+      h1,
+      h2,
+      h3,
+      h4 {
+        margin: 0;
+        font-weight: 700;
+      }
+      .muted {
+        color: var(--fg3);
+      }
+      .small {
+        font-size: 11px;
+      }
+      .num {
+        font-variant-numeric: tabular-nums;
+      }
+      .info {
+        display: inline-flex;
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        border: 1px solid #999;
+        color: #777;
+        font-size: 9px;
+        font-weight: 700;
+        align-items: center;
+        justify-content: center;
+        margin-left: 3px;
+        vertical-align: -1px;
+        cursor: help;
+        position: relative;
+        font-style: normal;
+        background: #fff;
+      }
+      .info::before {
+        content: "i";
+      }
+      .info::after {
+        content: attr(data-tip);
+        position: absolute;
+        bottom: calc(100% + 6px);
+        left: 50%;
+        transform: translateX(-50%);
+        width: max-content;
+        max-width: 260px;
+        background: #fffbe6;
+        color: #333;
+        border: 1px solid #c9b76b;
+        padding: 6px 9px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: 400;
+        line-height: 1.45;
+        white-space: normal;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.12s;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+        z-index: 90;
+        text-align: left;
+      }
+      .info:hover::after {
+        opacity: 1;
+      }
+      .info.l::after {
+        left: auto;
+        right: -6px;
+        transform: none;
+      }
+      .info.b::after {
+        bottom: auto;
+        top: calc(100% + 6px);
+      }
+      .badge {
+        display: inline-block;
+        padding: 1px 6px;
+        border-radius: 2px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+        border: 1px solid transparent;
+      }
+      .b-즉시 {
+        background: #fde8e6;
+        color: #b3261e;
+        border-color: #f1b8b3;
+      }
+      .b-대기 {
+        background: #fff4d6;
+        color: #8a5a00;
+        border-color: #f0d48a;
+      }
+      .b-협의 {
+        background: #ece6fb;
+        color: #4d2e9c;
+        border-color: #cbbdf0;
+      }
+      .b-요청 {
+        background: #e3eefc;
+        color: #1a4fb0;
+        border-color: #b7cdf3;
+      }
+      .b-없음 {
+        background: #f5f5f5;
+        color: #999;
+        border-color: #e0e0e0;
+      }
+      .b-진행 {
+        background: #fde8e6;
+        color: #b3261e;
+        border-color: #f1b8b3;
+      }
+      .b-접수 {
+        background: #fff4d6;
+        color: #8a5a00;
+        border-color: #f0d48a;
+      }
+      .b-종료 {
+        background: #e8e8e8;
+        color: #555;
+        border-color: #ccc;
+      }
+      .b-발급 {
+        background: #e4f4e8;
+        color: #1e6b36;
+        border-color: #b6dfc2;
+      }
+      .b-회수 {
+        background: #efefef;
+        color: #777;
+        border-color: #d0d0d0;
+      }
+      .b-투입 {
+        background: #e4f4e8;
+        color: #1e6b36;
+        border-color: #b6dfc2;
+      }
+      .b-정비 {
+        background: #efefef;
+        color: #777;
+        border-color: #d0d0d0;
+      }
+      table.grid {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      table.grid th,
+      table.grid td {
+        border: 1px solid var(--line2);
+        padding: 4px 6px;
+        vertical-align: middle;
+      }
+      table.grid th {
+        background: var(--cell);
+        color: #333;
+        font-weight: 700;
+        text-align: center;
+      }
+      table.grid td.k {
+        background: var(--cell);
+        color: #333;
+        font-weight: 700;
+        text-align: center;
+        white-space: nowrap;
+        width: 66px;
+      }
+      table.grid tr.clickable {
+        cursor: pointer;
+      }
+      table.grid tr.clickable:hover td {
+        background: #f7fbff;
+      }
+      table.grid tr.sel td {
+        background: #fff8e1;
+      }
+      table.grid td.y {
+        background: #ffff99;
+      }
+      table.grid td.g {
+        background: #99ff99;
+      }
 
-  /* 로그인 */
-  #login-overlay { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; color: #1e2a36; background:
-      repeating-radial-gradient(circle at 20% 120%, transparent 0 22px, rgba(255,255,255,.035) 22px 23px),
-      radial-gradient(1200px 520px at 15% 110%, #2f5d3b 0%, transparent 60%),
-      radial-gradient(900px 420px at 85% 105%, #1f4a3a 0%, transparent 60%),
-      linear-gradient(180deg, #0f2a33 0%, #143b3f 45%, #1c4d3c 100%); }
-  .lg-top { height: 62px; display: flex; align-items: center; gap: 14px; padding: 0 28px; background: rgba(255,255,255,.96); border-bottom: 3px solid #1e4fb0; }
-  .lg-logo { width: 38px; height: 38px; object-fit: contain; }
-  .lg-org { display: flex; flex-direction: column; line-height: 1.1; }
-  .lg-org b { font-size: 19px; color: #17325e; letter-spacing: .06em; }
-  .lg-org span { font-size: 10.5px; color: #6b7785; letter-spacing: .04em; }
-  .lg-sep { width: 1px; height: 30px; background: #cdd3da; margin: 0 4px; }
-  .lg-sys { font-size: 16px; font-weight: 700; color: #1e2a36; display: flex; flex-direction: column; line-height: 1.15; }
-  .lg-sys small { font-size: 10.5px; color: #7a8592; font-weight: 400; letter-spacing: .02em; }
-  .lg-right { margin-left: auto; display: flex; gap: 16px; align-items: center; font-size: 12px; color: #4b5563; }
-  .lg-env { border: 1px solid #c9ced6; padding: 1px 6px; border-radius: 2px; color: #6b7785; font-size: 11px; }
-  .lg-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px; }
-  .lg-card { display: grid; grid-template-columns: 420px 380px; background: #fff; border-radius: 4px; box-shadow: 0 30px 80px rgba(0,0,0,.45); overflow: hidden; }
-  .lg-left { background: linear-gradient(160deg, #17325e 0%, #1f4a7a 60%, #24618a 100%); color: #e6eef8; padding: 34px 32px; display: flex; flex-direction: column; gap: 14px; position: relative; overflow: hidden; }
-  .lg-left::after { content: ""; position: absolute; right: -60px; bottom: -80px; width: 260px; height: 260px; border-radius: 50%; border: 40px solid rgba(255,255,255,.06); }
-  .lg-mark { display: flex; align-items: center; gap: 10px; }
-  .lg-mark img { width: 44px; height: 44px; object-fit: contain; background: #fff; border-radius: 50%; padding: 4px; }
-  .lg-mark b { display: block; font-size: 18px; letter-spacing: .08em; }
-  .lg-mark span { font-size: 10.5px; color: #b9c9de; letter-spacing: .04em; }
-  .lg-left h2 { font-size: 22px; letter-spacing: -.01em; margin-top: 6px; position: relative; }
-  .lg-left p { margin: 0; font-size: 12.5px; line-height: 1.6; color: #c9d6e6; position: relative; }
-  .lg-feat { margin: 0; padding: 0 0 0 16px; font-size: 12.5px; line-height: 1.9; color: #e6eef8; position: relative; }
-  .lg-status { margin-top: auto; font-size: 11.5px; color: #b9c9de; display: flex; align-items: center; gap: 6px; position: relative; }
-  .lg-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #34c17a; box-shadow: 0 0 8px #34c17a; }
-  .lg-form { padding: 34px 32px; display: flex; flex-direction: column; gap: 10px; }
-  .lg-form h1 { font-size: 22px; letter-spacing: .12em; color: #17325e; font-weight: 800; }
-  .lg-note { font-size: 12px; color: #6b7785; margin-bottom: 4px; }
-  .lg-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #4b5563; font-weight: 600; }
-  .lg-form input, .lg-form select { width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid #c9ced6; border-radius: 3px; }
-  .lg-form input:focus, .lg-form select:focus { outline: 2px solid #1e4fb0; outline-offset: -1px; }
-  .lg-err { font-size: 11.5px; color: #b3261e; min-height: 14px; }
-  .lg-btn { margin-top: 4px; width: 100%; justify-content: center; padding: 10px; font-size: 14px; font-weight: 800; color: #fff; background: linear-gradient(#2a5fc0, #17325e); border: 1px solid #12284c; border-radius: 3px; letter-spacing: .06em; }
-  .lg-btn:hover { background: linear-gradient(#3169cc, #1a3a6b); }
-  .lg-hint { font-size: 11px; color: #6b7785; line-height: 1.6; background: #f4f6f9; border: 1px solid #e1e5ea; padding: 6px 8px; border-radius: 3px; }
-  .lg-hint code { background: #fff; border: 1px solid #d9dee5; padding: 0 3px; border-radius: 2px; font-family: inherit; }
-  .lg-notice { width: 800px; background: rgba(255,255,255,.92); border-radius: 4px; padding: 10px 16px; font-size: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
-  .lg-notice-hd { font-weight: 700; color: #17325e; margin-bottom: 4px; }
-  .lg-notice ul { margin: 0; padding: 0; list-style: none; }
-  .lg-notice li { padding: 3px 0; border-top: 1px dashed #d9dee5; color: #374151; display: flex; gap: 10px; }
-  .lg-notice li .num { color: #6b7785; flex: none; }
-  .lg-foot { height: 44px; display: flex; align-items: center; justify-content: center; gap: 28px; font-size: 11px; color: #9fb4c4; background: rgba(0,0,0,.35); border-top: 1px solid rgba(255,255,255,.08); }
+      /* 로그인 */
+      #login-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        color: #1e2a36;
+        background:
+          repeating-radial-gradient(
+            circle at 20% 120%,
+            transparent 0 22px,
+            rgba(255, 255, 255, 0.035) 22px 23px
+          ),
+          radial-gradient(
+            1200px 520px at 15% 110%,
+            #2f5d3b 0%,
+            transparent 60%
+          ),
+          radial-gradient(900px 420px at 85% 105%, #1f4a3a 0%, transparent 60%),
+          linear-gradient(180deg, #0f2a33 0%, #143b3f 45%, #1c4d3c 100%);
+      }
+      .lg-top {
+        height: 62px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 28px;
+        background: rgba(255, 255, 255, 0.96);
+        border-bottom: 3px solid #1e4fb0;
+      }
+      .lg-logo {
+        width: 38px;
+        height: 38px;
+        object-fit: contain;
+      }
+      .lg-org {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.1;
+      }
+      .lg-org b {
+        font-size: 19px;
+        color: #17325e;
+        letter-spacing: 0.06em;
+      }
+      .lg-org span {
+        font-size: 10.5px;
+        color: #6b7785;
+        letter-spacing: 0.04em;
+      }
+      .lg-sep {
+        width: 1px;
+        height: 30px;
+        background: #cdd3da;
+        margin: 0 4px;
+      }
+      .lg-sys {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1e2a36;
+        display: flex;
+        flex-direction: column;
+        line-height: 1.15;
+      }
+      .lg-sys small {
+        font-size: 10.5px;
+        color: #7a8592;
+        font-weight: 400;
+        letter-spacing: 0.02em;
+      }
+      .lg-right {
+        margin-left: auto;
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        font-size: 12px;
+        color: #4b5563;
+      }
+      .lg-env {
+        border: 1px solid #c9ced6;
+        padding: 1px 6px;
+        border-radius: 2px;
+        color: #6b7785;
+        font-size: 11px;
+      }
+      .lg-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        padding: 24px;
+      }
+      .lg-card {
+        display: grid;
+        grid-template-columns: 420px 380px;
+        background: #fff;
+        border-radius: 4px;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+      }
+      .lg-left {
+        background: linear-gradient(
+          160deg,
+          #17325e 0%,
+          #1f4a7a 60%,
+          #24618a 100%
+        );
+        color: #e6eef8;
+        padding: 34px 32px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        position: relative;
+        overflow: hidden;
+      }
+      .lg-left::after {
+        content: "";
+        position: absolute;
+        right: -60px;
+        bottom: -80px;
+        width: 260px;
+        height: 260px;
+        border-radius: 50%;
+        border: 40px solid rgba(255, 255, 255, 0.06);
+      }
+      .lg-mark {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .lg-mark img {
+        width: 44px;
+        height: 44px;
+        object-fit: contain;
+        background: #fff;
+        border-radius: 50%;
+        padding: 4px;
+      }
+      .lg-mark b {
+        display: block;
+        font-size: 18px;
+        letter-spacing: 0.08em;
+      }
+      .lg-mark span {
+        font-size: 10.5px;
+        color: #b9c9de;
+        letter-spacing: 0.04em;
+      }
+      .lg-left h2 {
+        font-size: 22px;
+        letter-spacing: -0.01em;
+        margin-top: 6px;
+        position: relative;
+      }
+      .lg-left p {
+        margin: 0;
+        font-size: 12.5px;
+        line-height: 1.6;
+        color: #c9d6e6;
+        position: relative;
+      }
+      .lg-feat {
+        margin: 0;
+        padding: 0 0 0 16px;
+        font-size: 12.5px;
+        line-height: 1.9;
+        color: #e6eef8;
+        position: relative;
+      }
+      .lg-status {
+        margin-top: auto;
+        font-size: 11.5px;
+        color: #b9c9de;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        position: relative;
+      }
+      .lg-status .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #34c17a;
+        box-shadow: 0 0 8px #34c17a;
+      }
+      .lg-form {
+        padding: 34px 32px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .lg-form h1 {
+        font-size: 22px;
+        letter-spacing: 0.12em;
+        color: #17325e;
+        font-weight: 800;
+      }
+      .lg-note {
+        font-size: 12px;
+        color: #6b7785;
+        margin-bottom: 4px;
+      }
+      .lg-form label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 12px;
+        color: #4b5563;
+        font-weight: 600;
+      }
+      .lg-form input,
+      .lg-form select {
+        width: 100%;
+        padding: 8px 10px;
+        font-size: 13px;
+        border: 1px solid #c9ced6;
+        border-radius: 3px;
+      }
+      .lg-form input:focus,
+      .lg-form select:focus {
+        outline: 2px solid #1e4fb0;
+        outline-offset: -1px;
+      }
+      .lg-err {
+        font-size: 11.5px;
+        color: #b3261e;
+        min-height: 14px;
+      }
+      .lg-btn {
+        margin-top: 4px;
+        width: 100%;
+        justify-content: center;
+        padding: 10px;
+        font-size: 14px;
+        font-weight: 800;
+        color: #fff;
+        background: linear-gradient(#2a5fc0, #17325e);
+        border: 1px solid #12284c;
+        border-radius: 3px;
+        letter-spacing: 0.06em;
+      }
+      .lg-btn:hover {
+        background: linear-gradient(#3169cc, #1a3a6b);
+      }
+      .lg-hint {
+        font-size: 11px;
+        color: #6b7785;
+        line-height: 1.6;
+        background: #f4f6f9;
+        border: 1px solid #e1e5ea;
+        padding: 6px 8px;
+        border-radius: 3px;
+      }
+      .lg-hint code {
+        background: #fff;
+        border: 1px solid #d9dee5;
+        padding: 0 3px;
+        border-radius: 2px;
+        font-family: inherit;
+      }
+      .lg-notice {
+        width: 800px;
+        background: rgba(255, 255, 255, 0.92);
+        border-radius: 4px;
+        padding: 10px 16px;
+        font-size: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+      }
+      .lg-notice-hd {
+        font-weight: 700;
+        color: #17325e;
+        margin-bottom: 4px;
+      }
+      .lg-notice ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .lg-notice li {
+        padding: 3px 0;
+        border-top: 1px dashed #d9dee5;
+        color: #374151;
+        display: flex;
+        gap: 10px;
+      }
+      .lg-notice li .num {
+        color: #6b7785;
+        flex: none;
+      }
+      .lg-foot {
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        font-size: 11px;
+        color: #9fb4c4;
+        background: rgba(0, 0, 0, 0.35);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
 
-  /* 상단 1줄 */
-  #top1 { height: 40px; background: #fff; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; padding: 0 10px; }
-  #top1 .sys { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 800; color: #1c3f88; white-space: nowrap; }
-  #top1 .sys .logo { width: 26px; height: 26px; object-fit: contain; }
-  #top1 .sys .org { color: #17325e; letter-spacing: .08em; font-size: 16px; }
-  #top1 .sys .vsep { width: 1px; height: 18px; background: #cdd3da; margin: 0 4px; }
-  #top1 .sys .env { font-size: 10px; font-weight: 400; color: #777; border: 1px solid #ccc; padding: 0 4px; border-radius: 2px; }
-  .sclock { display: flex; align-items: center; gap: 5px; margin-left: 14px; padding: 2px 8px; border: 1px solid #cdd3da; border-radius: 3px; background: #f7f9fc; font-size: 11.5px; color: #555; white-space: nowrap; }
-  .sclock b { color: #17325e; font-size: 12.5px; font-variant-numeric: tabular-nums; }
-  .sclock .tz { font-size: 10px; color: #888; }
-  #top1 .tog { display: flex; gap: 4px; margin-left: 10px; }
-  #top1 .tog button { border-radius: 12px; padding: 1px 9px; }
-  #top1 .tog button.on { background: #e9f0ff; border-color: var(--blue); color: var(--blue); }
-  #top1 .menu { display: flex; gap: 4px; margin-left: auto; }
-  #top1 .user { display: flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 11.5px; color: #444; white-space: nowrap; }
-  #top1 .user b { color: #1c3f88; }
-  #top1 .user .ibtn { width: 24px; height: 24px; padding: 0; justify-content: center; }
-  /* 상단 2줄: 레이어(인구·시설·도로·기관) */
-  #top2 { height: 30px; background: #f4f4f4; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 4px; padding: 0 10px; }
-  #top2 .lg { display: flex; align-items: center; gap: 3px; padding-right: 8px; margin-right: 4px; border-right: 1px solid #ccc; }
-  #top2 .lg:last-child { border-right: 0; }
-  #top2 .lg .cap { font-size: 11px; color: #555; font-weight: 700; margin-right: 2px; white-space: nowrap; }
-  #top2 .lg button { font-size: 11.5px; padding: 1px 7px; }
+      /* 상단 1줄 */
+      #top1 {
+        height: 40px;
+        background: #fff;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+      }
+      #top1 .sys {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 15px;
+        font-weight: 800;
+        color: #1c3f88;
+        white-space: nowrap;
+      }
+      #top1 .sys .logo {
+        width: 26px;
+        height: 26px;
+        object-fit: contain;
+      }
+      #top1 .sys .org {
+        color: #17325e;
+        letter-spacing: 0.08em;
+        font-size: 16px;
+      }
+      #top1 .sys .vsep {
+        width: 1px;
+        height: 18px;
+        background: #cdd3da;
+        margin: 0 4px;
+      }
+      #top1 .sys .env {
+        font-size: 10px;
+        font-weight: 400;
+        color: #777;
+        border: 1px solid #ccc;
+        padding: 0 4px;
+        border-radius: 2px;
+      }
+      .sclock {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-left: 14px;
+        padding: 2px 8px;
+        border: 1px solid #cdd3da;
+        border-radius: 3px;
+        background: #f7f9fc;
+        font-size: 11.5px;
+        color: #555;
+        white-space: nowrap;
+      }
+      .sclock b {
+        color: #17325e;
+        font-size: 12.5px;
+        font-variant-numeric: tabular-nums;
+      }
+      .sclock .tz {
+        font-size: 10px;
+        color: #888;
+      }
+      #top1 .tog {
+        display: flex;
+        gap: 4px;
+        margin-left: 10px;
+      }
+      #top1 .tog button {
+        border-radius: 12px;
+        padding: 1px 9px;
+      }
+      #top1 .tog button.on {
+        background: #e9f0ff;
+        border-color: var(--blue);
+        color: var(--blue);
+      }
+      #top1 .menu {
+        display: flex;
+        gap: 4px;
+        margin-left: auto;
+      }
+      #top1 .user {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: 8px;
+        font-size: 11.5px;
+        color: #444;
+        white-space: nowrap;
+      }
+      #top1 .user b {
+        color: #1c3f88;
+      }
+      #top1 .user .ibtn {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        justify-content: center;
+      }
+      /* 상단 2줄: 레이어(인구·시설·도로·기관) */
+      #top2 {
+        height: 30px;
+        background: #f4f4f4;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 0 10px;
+      }
+      #top2 .lg {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        padding-right: 8px;
+        margin-right: 4px;
+        border-right: 1px solid #ccc;
+      }
+      #top2 .lg:last-child {
+        border-right: 0;
+      }
+      #top2 .lg .cap {
+        font-size: 11px;
+        color: #555;
+        font-weight: 700;
+        margin-right: 2px;
+        white-space: nowrap;
+      }
+      #top2 .lg button {
+        font-size: 11.5px;
+        padding: 1px 7px;
+      }
 
-  /* 무대 */
-  #stage { position: relative; height: calc(100vh - 70px); background: #cfd8dc; overflow: hidden; }
-  #map { position: absolute; inset: 0; }
-  .maplibregl-ctrl-attrib { font-size: 10px; }
-  .map-popup { font-size: 12px; color: #222; line-height: 1.45; }
-  .maplibregl-popup-content { border-radius: 3px; padding: 8px 10px; border: 1px solid #888; }
-  #compass { position: absolute; right: 4px; bottom: 34px; z-index: 6; width: 64px; height: 64px; cursor: pointer; border-radius: 50%; background: radial-gradient(circle, #fff 0%, #e8e8e8 70%, #cfcfcf 100%); border: 1px solid #999; box-shadow: 0 2px 6px rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; }
-  #compass svg { width: 58px; height: 58px; }
-  #tool-strip { position: absolute; right: 38px; top: 96px; z-index: 6; display: flex; flex-direction: column; gap: 4px; align-items: center; }
-  #tool-strip .ibtn { width: 26px; height: 26px; padding: 0; justify-content: center; background: #fff; }
-  #tool-strip .ibtn.on { background: var(--blue); color: #fff; border-color: #23499a; }
-  #tool-strip .zoom { display: flex; flex-direction: column; align-items: center; background: #fff; border: 1px solid #b5b5b5; border-radius: 3px; padding: 2px; }
-  #tool-strip .zoom input[type=range] { writing-mode: vertical-lr; direction: rtl; width: 18px; height: 110px; margin: 2px 0; accent-color: #666; }
-  #vtabs { position: absolute; right: 0; top: 96px; z-index: 6; display: flex; flex-direction: column; gap: 2px; }
-  #vtabs .vtab { writing-mode: vertical-rl; text-orientation: upright; letter-spacing: .12em; padding: 8px 4px; font-size: 12px; font-weight: 700; color: #fff; background: #6b7c93; border: 1px solid #4d5a6b; border-right: 0; border-radius: 4px 0 0 4px; cursor: pointer; }
-  #vtabs .vtab[data-v="fire"] { background: var(--red); border-color: #a1221b; }
-  #vtabs .vtab[data-v="legend"] { background: #5b7f3a; border-color: #3f5a28; }
-  #vtabs .vtab.on { filter: brightness(1.15); box-shadow: -2px 0 0 #fff inset; }
+      /* 무대 */
+      #stage {
+        position: relative;
+        height: calc(100vh - 70px);
+        background: #cfd8dc;
+        overflow: hidden;
+      }
+      #map {
+        position: absolute;
+        inset: 0;
+      }
+      .maplibregl-ctrl-attrib {
+        font-size: 10px;
+      }
+      .map-popup {
+        font-size: 12px;
+        color: #222;
+        line-height: 1.45;
+      }
+      .maplibregl-popup-content {
+        border-radius: 3px;
+        padding: 8px 10px;
+        border: 1px solid #888;
+      }
+      #compass {
+        position: absolute;
+        right: 4px;
+        bottom: 34px;
+        z-index: 6;
+        width: 64px;
+        height: 64px;
+        cursor: pointer;
+        border-radius: 50%;
+        background: radial-gradient(circle, #fff 0%, #e8e8e8 70%, #cfcfcf 100%);
+        border: 1px solid #999;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #compass svg {
+        width: 58px;
+        height: 58px;
+      }
+      #tool-strip {
+        position: absolute;
+        right: 38px;
+        top: 96px;
+        z-index: 6;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        align-items: center;
+      }
+      #tool-strip .ibtn {
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        justify-content: center;
+        background: #fff;
+      }
+      #tool-strip .ibtn.on {
+        background: var(--blue);
+        color: #fff;
+        border-color: #23499a;
+      }
+      #tool-strip .zoom {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: #fff;
+        border: 1px solid #b5b5b5;
+        border-radius: 3px;
+        padding: 2px;
+      }
+      #tool-strip .zoom input[type="range"] {
+        writing-mode: vertical-lr;
+        direction: rtl;
+        width: 18px;
+        height: 110px;
+        margin: 2px 0;
+        accent-color: #666;
+      }
+      #vtabs {
+        position: absolute;
+        right: 0;
+        top: 96px;
+        z-index: 6;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      #vtabs .vtab {
+        writing-mode: vertical-rl;
+        text-orientation: upright;
+        letter-spacing: 0.12em;
+        padding: 8px 4px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #fff;
+        background: #6b7c93;
+        border: 1px solid #4d5a6b;
+        border-right: 0;
+        border-radius: 4px 0 0 4px;
+        cursor: pointer;
+      }
+      #vtabs .vtab[data-v="fire"] {
+        background: var(--red);
+        border-color: #a1221b;
+      }
+      #vtabs .vtab[data-v="legend"] {
+        background: #5b7f3a;
+        border-color: #3f5a28;
+      }
+      #vtabs .vtab.on {
+        filter: brightness(1.15);
+        box-shadow: -2px 0 0 #fff inset;
+      }
 
-  /* 떠 있는 패널 공통 */
-  .fpanel { position: absolute; z-index: 7; background: #fff; border: 1px solid #7a7a7a; box-shadow: 0 4px 14px rgba(0,0,0,.35); border-radius: 3px; display: none; flex-direction: column; }
-  .fpanel.on { display: flex; }
-  .fpanel .fhd { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-bottom: 1px solid #bbb; background: linear-gradient(#fff, #f0f0f0); cursor: move; user-select: none; }
-  .fpanel .fhd .clock { font-weight: 700; color: #333; }
-  .fpanel .fhd .ibtn { width: 22px; height: 22px; padding: 0; justify-content: center; background: transparent; border: 0; color: #666; }
-  .fpanel .fhd .ibtn:hover { color: #000; background: #e5e5e5; }
-  .fpanel .fbody { overflow: auto; }
+      /* 떠 있는 패널 공통 */
+      .fpanel {
+        position: absolute;
+        z-index: 7;
+        background: #fff;
+        border: 1px solid #7a7a7a;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+        border-radius: 3px;
+        display: none;
+        flex-direction: column;
+      }
+      .fpanel.on {
+        display: flex;
+      }
+      .fpanel .fhd {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 8px;
+        border-bottom: 1px solid #bbb;
+        background: linear-gradient(#fff, #f0f0f0);
+        cursor: move;
+        user-select: none;
+      }
+      .fpanel .fhd .clock {
+        font-weight: 700;
+        color: #333;
+      }
+      .fpanel .fhd .ibtn {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        justify-content: center;
+        background: transparent;
+        border: 0;
+        color: #666;
+      }
+      .fpanel .fhd .ibtn:hover {
+        color: #000;
+        background: #e5e5e5;
+      }
+      .fpanel .fbody {
+        overflow: auto;
+      }
 
-  /* 상황정보 패널(우측) */
-  #info-panel { right: 74px; top: 44px; width: var(--panel-w); max-height: calc(100% - 60px); }
-  #info-panel .fbody { padding: 0; }
-  .ip-head { padding: 6px 8px 4px; }
-  .ip-head table.grid td { padding: 3px 6px; }
-  .ip-head .stage { color: var(--red); font-weight: 700; }
-  .ip-tabs { display: flex; margin: 4px 8px 0; }
-  .ip-tabs button { flex: 1; justify-content: center; border-radius: 0; background: #dfe3ea; border-color: #b5bcc8; color: #333; padding: 4px 2px; font-weight: 700; }
-  .ip-tabs button + button { border-left: 0; }
-  .ip-tabs button.on { background: var(--blue2); border-color: #2a4f97; color: #fff; }
-  .ipt { display: none; padding: 8px; }
-  .ipt.on { display: block; }
-  .sec { font-size: 11.5px; font-weight: 700; color: #333; margin: 10px 0 4px; display: flex; align-items: center; gap: 4px; }
-  .sec:first-child { margin-top: 0; }
-  .sec::before { content: ""; width: 3px; height: 11px; background: var(--red); display: inline-block; }
-  .sec .r { margin-left: auto; font-weight: 400; }
-  .btnrow { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0; }
-  .btnrow button { font-size: 11.5px; padding: 1px 6px; }
-  .progress { height: 5px; background: #e5e5e5; border: 1px solid #ccc; margin: 4px 0; }
-  .progress i { display: block; height: 100%; width: 0%; background: var(--red); transition: width .25s; }
-  #predict-status { font-size: 11.5px; color: #444; min-height: 14px; }
-  #playbar { display: flex; align-items: center; gap: 6px; margin: 6px 0; padding: 5px; background: #f4f4f4; border: 1px solid var(--line2); }
-  #playbar .ibtn { width: 26px; height: 26px; padding: 0; justify-content: center; }
-  #time-label { font-weight: 800; min-width: 96px; text-align: center; line-height: 1.1; }
-  #time-label small { display: block; font-weight: 400; color: #666; font-size: 10px; }
-  .ticks { display: flex; justify-content: space-between; font-size: 9px; color: #777; padding: 0 2px; }
-  /* 위험도 */
-  .risk { display: grid; grid-template-columns: 88px 1fr; gap: 8px; align-items: center; margin: 4px 0 6px; }
-  .risk .gauge { text-align: center; border: 1px solid var(--line2); background: #fafafa; padding: 6px 4px; }
-  .risk .gauge .v { font-size: 26px; font-weight: 800; line-height: 1; }
-  .risk .gauge .g { font-size: 12px; font-weight: 700; margin-top: 3px; }
-  .risk .gauge .k { font-size: 10px; color: #666; }
-  .risk .fac { display: flex; flex-direction: column; gap: 3px; }
-  .risk .fac .row { display: grid; grid-template-columns: 58px 1fr 118px; gap: 6px; align-items: center; font-size: 11px; }
-  .risk .fac .bar { height: 9px; background: #eee; border: 1px solid #ddd; position: relative; }
-  .risk .fac .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #d0342c; }
-  .risk .fac .n { text-align: right; color: #444; font-variant-numeric: tabular-nums; }
-  .g-낮음 { color: #2e7d32; } .g-보통 { color: #b58a00; } .g-높음 { color: #d0342c; } .g-매우높음 { color: #7b0000; }
+      /* 상황정보 패널(우측) */
+      #info-panel {
+        right: 74px;
+        top: 44px;
+        width: var(--panel-w);
+        max-height: calc(100% - 60px);
+      }
+      #info-panel .fbody {
+        padding: 0;
+      }
+      .ip-head {
+        padding: 6px 8px 4px;
+      }
+      .ip-head table.grid td {
+        padding: 3px 6px;
+      }
+      .ip-head .stage {
+        color: var(--red);
+        font-weight: 700;
+      }
+      .ip-tabs {
+        display: flex;
+        margin: 4px 8px 0;
+      }
+      .ip-tabs button {
+        flex: 1;
+        justify-content: center;
+        border-radius: 0;
+        background: #dfe3ea;
+        border-color: #b5bcc8;
+        color: #333;
+        padding: 4px 2px;
+        font-weight: 700;
+      }
+      .ip-tabs button + button {
+        border-left: 0;
+      }
+      .ip-tabs button.on {
+        background: var(--blue2);
+        border-color: #2a4f97;
+        color: #fff;
+      }
+      .ipt {
+        display: none;
+        padding: 8px;
+      }
+      .ipt.on {
+        display: block;
+      }
+      .sec {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: #333;
+        margin: 10px 0 4px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .sec:first-child {
+        margin-top: 0;
+      }
+      .sec::before {
+        content: "";
+        width: 3px;
+        height: 11px;
+        background: var(--red);
+        display: inline-block;
+      }
+      .sec .r {
+        margin-left: auto;
+        font-weight: 400;
+      }
+      .btnrow {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        margin: 6px 0;
+      }
+      .btnrow button {
+        font-size: 11.5px;
+        padding: 1px 6px;
+      }
+      .progress {
+        height: 5px;
+        background: #e5e5e5;
+        border: 1px solid #ccc;
+        margin: 4px 0;
+      }
+      .progress i {
+        display: block;
+        height: 100%;
+        width: 0%;
+        background: var(--red);
+        transition: width 0.25s;
+      }
+      #predict-status {
+        font-size: 11.5px;
+        color: #444;
+        min-height: 14px;
+      }
+      #playbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 6px 0;
+        padding: 5px;
+        background: #f4f4f4;
+        border: 1px solid var(--line2);
+      }
+      #playbar .ibtn {
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        justify-content: center;
+      }
+      #time-label {
+        font-weight: 800;
+        min-width: 96px;
+        text-align: center;
+        line-height: 1.1;
+      }
+      #time-label small {
+        display: block;
+        font-weight: 400;
+        color: #666;
+        font-size: 10px;
+      }
+      .ticks {
+        display: flex;
+        justify-content: space-between;
+        font-size: 9px;
+        color: #777;
+        padding: 0 2px;
+      }
+      /* 위험도 */
+      .risk {
+        display: grid;
+        grid-template-columns: 88px 1fr;
+        gap: 8px;
+        align-items: center;
+        margin: 4px 0 6px;
+      }
+      .risk .gauge {
+        text-align: center;
+        border: 1px solid var(--line2);
+        background: #fafafa;
+        padding: 6px 4px;
+      }
+      .risk .gauge .v {
+        font-size: 26px;
+        font-weight: 800;
+        line-height: 1;
+      }
+      .risk .gauge .g {
+        font-size: 12px;
+        font-weight: 700;
+        margin-top: 3px;
+      }
+      .risk .gauge .k {
+        font-size: 10px;
+        color: #666;
+      }
+      .risk .fac {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .risk .fac .row {
+        display: grid;
+        grid-template-columns: 58px 1fr 118px;
+        gap: 6px;
+        align-items: center;
+        font-size: 11px;
+      }
+      .risk .fac .bar {
+        height: 9px;
+        background: #eee;
+        border: 1px solid #ddd;
+        position: relative;
+      }
+      .risk .fac .bar i {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        background: #d0342c;
+      }
+      .risk .fac .n {
+        text-align: right;
+        color: #444;
+        font-variant-numeric: tabular-nums;
+      }
 
-  /* 대응 제안 */
-  #prop-meta { font-size: 11.5px; color: #444; margin-bottom: 4px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  #stage-banner { display: none; margin: 4px 0 6px; padding: 6px 8px; border: 1px solid #f0c36d; background: #fff8e1; color: #6b4a00; font-size: 11.5px; line-height: 1.45; }
-  #stage-banner.on { display: block; }
-  .ptabs { display: flex; gap: 0; margin-top: 4px; }
-  .ptabs button { flex: 1; justify-content: center; border-radius: 0; background: #f0f0f0; font-weight: 700; }
-  .ptabs button + button { border-left: 0; }
-  .ptabs button[data-axis="진화"].on { background: #fde8e6; color: #b3261e; border-color: #e0a19c; }
-  .ptabs button[data-axis="대피"].on { background: #e3eefc; color: #1a4fb0; border-color: #a9c1ea; }
-  .pfilters { display: flex; gap: 3px; flex-wrap: wrap; margin: 6px 0 4px; align-items: center; }
-  .pfilters button { font-size: 11px; padding: 0 7px; border-radius: 10px; }
-  .pfilters button.on { background: #444; color: #fff; border-color: #222; }
-  #cards { max-height: 50vh; overflow: auto; }
-  .card { border: 1px solid #c5cad2; border-left: 4px solid #9aa3ad; margin-bottom: 4px; background: #fff; border-radius: 2px; }
-  .card.axis-진화 { border-left-color: var(--red); } .card.axis-대피 { border-left-color: var(--blue2); }
-  .card.hi { box-shadow: 0 0 0 2px #f0c36d; }
-  .chg-tag { font-size: 10.5px; font-weight: 700; color: #4d2e9c; background: #ece6fb; border: 1px solid #cbbdf0; padding: 0 5px; border-radius: 2px; cursor: pointer; }
-  .chg-tag:hover { background: #ddd2f8; }
-  .card .head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; cursor: pointer; background: linear-gradient(#fff, #f2f3f5); }
-  .card .head:hover { background: linear-gradient(#fff, #e9ebee); }
-  .card .head .nm { flex: 1; font-weight: 700; color: #1e2a36; }
-  .card .head .st { display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-end; }
-  .card .head .arrow { color: #888; font-size: 10px; width: 12px; text-align: center; transition: transform .15s; }
-  .card.open .head .arrow { transform: rotate(90deg); }
-  .card .body { display: none; border-top: 1px solid #e0e3e8; padding: 8px; background: #fbfbfc; }
-  .card.open .body { display: block; }
-  .card .sum { padding: 0 8px 7px; cursor: pointer; background: linear-gradient(#f2f3f5, #fff 14px); }
-  .card .text { padding: 6px 8px; line-height: 1.6; color: #222; background: #fff; border: 1px solid #e0e3e8; border-radius: 2px; }
-  .cite { display: inline-block; padding: 0 4px; margin: 0 1px; border-radius: 2px; background: #e3eefc; color: #1a4fb0; font-size: 10.5px; cursor: pointer; border: 1px solid #b7cdf3; vertical-align: 1px; }
-  .cite:hover { background: #cfe0fa; }
-  .card .withheld { margin-top: 4px; padding: 4px 8px; font-size: 11.5px; line-height: 1.5; color: #6b6b6b; background: #f4f4f5; border: 1px dashed #cfd3d8; border-radius: 2px; }
-  .card .withheld b { color: #444; font-weight: 600; }
-  .card .detail { margin-top: 6px; }
-  .card .detail .row { display: grid; grid-template-columns: 54px 1fr; gap: 4px; padding: 3px 0; font-size: 11.5px; line-height: 1.5; border-top: 1px dashed #e0e3e8; }
-  .card .detail .row .k { color: #666; }
-  .card .detail .ev { display: block; }
-  .card .actions { display: flex; gap: 4px; align-items: center; padding-top: 6px; margin-top: 4px; border-top: 1px dashed #e0e3e8; }
-  .card .actions button { font-size: 11px; padding: 1px 7px; }
-  #prop-summary { margin-top: 6px; font-size: 11px; color: #444; display: flex; flex-wrap: wrap; gap: 3px 6px; align-items: center; }
-  #evidence-drawer { position: absolute; inset: 0; background: #fff; z-index: 3; display: none; flex-direction: column; }
-  #evidence-drawer.on { display: flex; }
-  #evidence-drawer .hd { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid #bbb; background: #f0f0f0; font-weight: 700; }
-  #evidence-drawer .hd h3 { flex: 1; font-size: 12px; }
-  #ev-body { padding: 8px; overflow: auto; flex: 1; line-height: 1.55; }
-  .ev-chunk { border: 1px solid var(--line2); padding: 6px 8px; margin-bottom: 8px; background: #fafafa; }
-  .ev-chunk .meta { font-size: 11px; color: #666; margin-bottom: 3px; }
-  .ev-chunk mark { background: #fff3a8; padding: 0 2px; }
-  .ev-sentence { background: #eef7ee; border-left: 3px solid #4a9a5a; padding: 5px 8px; margin-bottom: 8px; }
-  /* 이력 */
-  #hist-runs table.grid td, #hist-events table.grid td { padding: 3px 5px; }
-  #hist-runs button { font-size: 11px; padding: 0 6px; }
-  #hist-events { max-height: 34vh; overflow: auto; }
-  #hist-events tr.sys td:first-child { color: var(--red); font-weight: 700; }
+      /* 대응 제안 */
+      #prop-meta {
+        font-size: 11.5px;
+        color: #444;
+        margin-bottom: 4px;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      #stage-banner {
+        display: none;
+        margin: 4px 0 6px;
+        padding: 6px 8px;
+        border: 1px solid #f0c36d;
+        background: #fff8e1;
+        color: #6b4a00;
+        font-size: 11.5px;
+        line-height: 1.45;
+      }
+      #stage-banner.on {
+        display: block;
+      }
+      .ptabs {
+        display: flex;
+        gap: 0;
+        margin-top: 4px;
+      }
+      .ptabs button {
+        flex: 1;
+        justify-content: center;
+        border-radius: 0;
+        background: #f0f0f0;
+        font-weight: 700;
+      }
+      .ptabs button + button {
+        border-left: 0;
+      }
+      .ptabs button[data-axis="진화"].on {
+        background: #fde8e6;
+        color: #b3261e;
+        border-color: #e0a19c;
+      }
+      .ptabs button[data-axis="대피"].on {
+        background: #e3eefc;
+        color: #1a4fb0;
+        border-color: #a9c1ea;
+      }
+      .pfilters {
+        display: flex;
+        gap: 3px;
+        flex-wrap: wrap;
+        margin: 6px 0 4px;
+        align-items: center;
+      }
+      .pfilters button {
+        font-size: 11px;
+        padding: 0 7px;
+        border-radius: 10px;
+      }
+      .pfilters button.on {
+        background: #444;
+        color: #fff;
+        border-color: #222;
+      }
+      #cards {
+        max-height: 50vh;
+        overflow: auto;
+      }
+      .card {
+        border: 1px solid #c5cad2;
+        border-left: 4px solid #9aa3ad;
+        margin-bottom: 4px;
+        background: #fff;
+        border-radius: 2px;
+      }
+      .card.axis-진화 {
+        border-left-color: var(--red);
+      }
+      .card.axis-대피 {
+        border-left-color: var(--blue2);
+      }
+      .card.hi {
+        box-shadow: 0 0 0 2px #f0c36d;
+      }
+      .chg-tag {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: #4d2e9c;
+        background: #ece6fb;
+        border: 1px solid #cbbdf0;
+        padding: 0 5px;
+        border-radius: 2px;
+        cursor: pointer;
+      }
+      .chg-tag:hover {
+        background: #ddd2f8;
+      }
+      .card .head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        cursor: pointer;
+        background: linear-gradient(#fff, #f2f3f5);
+      }
+      .card .head:hover {
+        background: linear-gradient(#fff, #e9ebee);
+      }
+      .card .head .nm {
+        flex: 1;
+        font-weight: 700;
+        color: #1e2a36;
+      }
+      .card .head .st {
+        display: flex;
+        gap: 3px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .card .head .arrow {
+        color: #888;
+        font-size: 10px;
+        width: 12px;
+        text-align: center;
+        transition: transform 0.15s;
+      }
+      .card.open .head .arrow {
+        transform: rotate(90deg);
+      }
+      .card .body {
+        display: none;
+        border-top: 1px solid #e0e3e8;
+        padding: 8px;
+        background: #fbfbfc;
+      }
+      .card.open .body {
+        display: block;
+      }
+      .card .sum {
+        padding: 0 8px 7px;
+        cursor: pointer;
+        background: linear-gradient(#f2f3f5, #fff 14px);
+      }
+      .card .text {
+        padding: 6px 8px;
+        line-height: 1.6;
+        color: #222;
+        background: #fff;
+        border: 1px solid #e0e3e8;
+        border-radius: 2px;
+      }
+      .cite {
+        display: inline-block;
+        padding: 0 4px;
+        margin: 0 1px;
+        border-radius: 2px;
+        background: #e3eefc;
+        color: #1a4fb0;
+        font-size: 10.5px;
+        cursor: pointer;
+        border: 1px solid #b7cdf3;
+        vertical-align: 1px;
+      }
+      .cite:hover {
+        background: #cfe0fa;
+      }
+      .card .withheld {
+        margin-top: 4px;
+        padding: 4px 8px;
+        font-size: 11.5px;
+        line-height: 1.5;
+        color: #6b6b6b;
+        background: #f4f4f5;
+        border: 1px dashed #cfd3d8;
+        border-radius: 2px;
+      }
+      .card .withheld b {
+        color: #444;
+        font-weight: 600;
+      }
+      .card .detail {
+        margin-top: 6px;
+      }
+      .card .detail .row {
+        display: grid;
+        grid-template-columns: 54px 1fr;
+        gap: 4px;
+        padding: 3px 0;
+        font-size: 11.5px;
+        line-height: 1.5;
+        border-top: 1px dashed #e0e3e8;
+      }
+      .card .detail .row .k {
+        color: #666;
+      }
+      .card .detail .ev {
+        display: block;
+      }
+      .card .actions {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        padding-top: 6px;
+        margin-top: 4px;
+        border-top: 1px dashed #e0e3e8;
+      }
+      .card .actions button {
+        font-size: 11px;
+        padding: 1px 7px;
+      }
+      #prop-summary {
+        margin-top: 6px;
+        font-size: 11px;
+        color: #444;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px 6px;
+        align-items: center;
+      }
+      #evidence-drawer {
+        position: absolute;
+        inset: 0;
+        background: #fff;
+        z-index: 3;
+        display: none;
+        flex-direction: column;
+      }
+      #evidence-drawer.on {
+        display: flex;
+      }
+      #evidence-drawer .hd {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        border-bottom: 1px solid #bbb;
+        background: #f0f0f0;
+        font-weight: 700;
+      }
+      #evidence-drawer .hd h3 {
+        flex: 1;
+        font-size: 12px;
+      }
+      #ev-body {
+        padding: 8px;
+        overflow: auto;
+        flex: 1;
+        line-height: 1.55;
+      }
+      .ev-chunk {
+        border: 1px solid var(--line2);
+        padding: 6px 8px;
+        margin-bottom: 8px;
+        background: #fafafa;
+      }
+      .ev-chunk .meta {
+        font-size: 11px;
+        color: #666;
+        margin-bottom: 3px;
+      }
+      .ev-chunk mark {
+        background: #fff3a8;
+        padding: 0 2px;
+      }
+      .ev-sentence {
+        background: #eef7ee;
+        border-left: 3px solid #4a9a5a;
+        padding: 5px 8px;
+        margin-bottom: 8px;
+      }
+      /* 이력 */
+      #hist-runs table.grid td,
+      #hist-events table.grid td {
+        padding: 3px 5px;
+      }
+      #hist-runs button {
+        font-size: 11px;
+        padding: 0 6px;
+      }
+      #hist-events {
+        max-height: 34vh;
+        overflow: auto;
+      }
+      #hist-events tr.sys td:first-child {
+        color: var(--red);
+        font-weight: 700;
+      }
 
-  /* AI 어시스턴트 팝업 */
-  #chat-panel { right: 74px; bottom: 44px; width: 390px; height: 480px; max-height: calc(100% - 60px); z-index: 9; }
-  #chat-fab { position: absolute; right: 74px; bottom: 44px; z-index: 8; border-radius: 20px; padding: 6px 14px 6px 12px; background: var(--blue); border-color: #23499a; color: #fff; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,.35); }
-  #chat-fab:hover { background: #244f9e; }
-  #chat-fab svg { stroke: #fff; }
-  #chat-panel .fbody { display: flex; flex-direction: column; flex: 1; padding: 6px; }
-  #chat-ctx { font-size: 11px; color: #444; background: var(--cell); border: 1px solid var(--line2); padding: 4px 6px; }
-  #chat-log { flex: 1; min-height: 200px; overflow: auto; border: 1px solid var(--line2); border-top: 0; padding: 8px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
-  .msg { max-width: 90%; padding: 6px 8px; border-radius: 4px; line-height: 1.5; white-space: pre-wrap; font-size: 12px; }
-  .msg.user { align-self: flex-end; background: #e3eefc; border: 1px solid #b7cdf3; }
-  .msg.bot { align-self: flex-start; background: #f5f5f5; border: 1px solid #ddd; }
-  .msg.sys { align-self: center; color: #777; font-size: 11px; }
-  .chat-quick { display: flex; gap: 3px; flex-wrap: wrap; margin: 6px 0; }
-  .chat-quick button { font-size: 11px; padding: 0 7px; border-radius: 10px; }
-  #chat-form { display: flex; gap: 4px; }
-  #chat-input { flex: 1; }
+      /* AI 어시스턴트 팝업 */
+      #chat-panel {
+        right: 74px;
+        bottom: 44px;
+        width: 390px;
+        height: 480px;
+        max-height: calc(100% - 60px);
+        z-index: 9;
+      }
+      #chat-fab {
+        position: absolute;
+        right: 74px;
+        bottom: 44px;
+        z-index: 8;
+        border-radius: 20px;
+        padding: 6px 14px 6px 12px;
+        background: var(--blue);
+        border-color: #23499a;
+        color: #fff;
+        font-weight: 700;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      }
+      #chat-fab:hover {
+        background: #244f9e;
+      }
+      #chat-fab svg {
+        stroke: #fff;
+      }
+      #chat-panel .fbody {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        padding: 6px;
+      }
+      #chat-ctx {
+        font-size: 11px;
+        color: #444;
+        background: var(--cell);
+        border: 1px solid var(--line2);
+        padding: 4px 6px;
+      }
+      #chat-log {
+        flex: 1;
+        min-height: 200px;
+        overflow: auto;
+        border: 1px solid var(--line2);
+        border-top: 0;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        background: #fff;
+      }
+      .msg {
+        max-width: 90%;
+        padding: 6px 8px;
+        border-radius: 4px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        font-size: 12px;
+      }
+      .msg.user {
+        align-self: flex-end;
+        background: #e3eefc;
+        border: 1px solid #b7cdf3;
+      }
+      .msg.bot {
+        align-self: flex-start;
+        background: #f5f5f5;
+        border: 1px solid #ddd;
+      }
+      .msg.sys {
+        align-self: center;
+        color: #777;
+        font-size: 11px;
+      }
+      .chat-quick {
+        display: flex;
+        gap: 3px;
+        flex-wrap: wrap;
+        margin: 6px 0;
+      }
+      .chat-quick button {
+        font-size: 11px;
+        padding: 0 7px;
+        border-radius: 10px;
+      }
+      #chat-form {
+        display: flex;
+        gap: 4px;
+      }
+      #chat-input {
+        flex: 1;
+      }
 
-  /* 좌측 진화자원 패널 */
-  #left-panel { left: 8px; top: 44px; width: 330px; max-height: calc(100% - 60px); }
-  #left-panel .fbody { padding: 6px; }
-  #left-panel .cnt { display: grid; grid-template-columns: 56px repeat(4, 1fr); text-align: center; margin: 0 0 6px; font-size: 11.5px; }
-  #left-panel .cnt div { border: 1px solid var(--line2); padding: 3px; }
-  #left-panel .cnt div.h { background: var(--cell); font-weight: 700; }
-  #left-panel .cnt div b { display: block; font-size: 14px; color: #1c3f88; }
+      /* 좌측 진화자원 패널 */
+      #left-panel {
+        left: 8px;
+        top: 44px;
+        width: 330px;
+        max-height: calc(100% - 60px);
+      }
+      #left-panel .fbody {
+        padding: 6px;
+      }
+      #left-panel .cnt {
+        display: grid;
+        grid-template-columns: 56px repeat(4, 1fr);
+        text-align: center;
+        margin: 0 0 6px;
+        font-size: 11.5px;
+      }
+      #left-panel .cnt div {
+        border: 1px solid var(--line2);
+        padding: 3px;
+      }
+      #left-panel .cnt div.h {
+        background: var(--cell);
+        font-weight: 700;
+      }
+      #left-panel .cnt div b {
+        display: block;
+        font-size: 14px;
+        color: #1c3f88;
+      }
 
-  /* 범례 패널 */
-  #legend-panel { right: calc(74px + var(--panel-w) + 8px); top: 44px; width: 270px; }
-  #legend-panel .fbody { padding: 8px; }
-  #legend-panel .row { display: flex; align-items: center; gap: 6px; margin: 3px 0; font-size: 11.5px; flex-wrap: wrap; }
-  #legend-panel .sw { width: 16px; height: 10px; display: inline-block; flex: none; border: 1px solid rgba(0,0,0,.2); }
-  #legend-panel .ico-s { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex: none; border: 1.5px solid #fff; box-shadow: 0 0 0 1px #777; }
-  #legend-panel .ico-s svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2; }
+      /* 범례 패널 */
+      #legend-panel {
+        right: calc(74px + var(--panel-w) + 8px);
+        top: 44px;
+        width: 270px;
+      }
+      #legend-panel .fbody {
+        padding: 8px;
+      }
+      #legend-panel .row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 3px 0;
+        font-size: 11.5px;
+        flex-wrap: wrap;
+      }
+      #legend-panel .sw {
+        width: 16px;
+        height: 10px;
+        display: inline-block;
+        flex: none;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+      }
+      #legend-panel .ico-s {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: none;
+        border: 1.5px solid #fff;
+        box-shadow: 0 0 0 1px #777;
+      }
+      #legend-panel .ico-s svg {
+        width: 11px;
+        height: 11px;
+        stroke: #fff;
+        fill: none;
+        stroke-width: 2;
+      }
 
-  /* 상황 보고자 패널 */
-  #rep-panel { right: 74px; top: 44px; width: 400px; max-height: calc(100% - 60px); }
-  #rep-panel .fbody { padding: 8px; }
-  .form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
-  .form label { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: #444; }
-  .form label.w { grid-column: 1 / -1; }
-  .form textarea { min-height: 48px; resize: vertical; font-size: 11.5px; }
-  .mode-on { background: #fff8e1 !important; border-color: #e0a325 !important; color: #6b4a00 !important; }
-  #rep-poly-info { font-size: 11.5px; color: #444; margin: 4px 0; }
-  #rep-perim-cur, #rep-perim-mode { font-size: 11.5px; color: #444; margin: 2px 0 4px; line-height: 1.6; }
-  #rep-perim-mode label { margin-right: 8px; white-space: nowrap; }
-  .intake-add { display: grid; grid-template-columns: 1.3fr 76px 1fr auto; gap: 4px; margin-top: 4px; }
-  .intake-add input { min-width: 0; font-size: 11.5px; }
-  #rep-closed-note { margin: 4px 0; padding: 4px 8px; font-size: 11.5px; color: #555; background: #efefef; border: 1px solid #d0d0d0; }
+      /* 상황 보고자 패널 */
+      #rep-panel {
+        right: 74px;
+        top: 44px;
+        width: 400px;
+        max-height: calc(100% - 60px);
+      }
+      #rep-panel .fbody {
+        padding: 8px;
+      }
+      .form {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 12px;
+      }
+      .form label {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 11.5px;
+        color: #444;
+      }
+      .form label.w {
+        grid-column: 1 / -1;
+      }
+      .form textarea {
+        min-height: 48px;
+        resize: vertical;
+        font-size: 11.5px;
+      }
+      .mode-on {
+        background: #fff8e1 !important;
+        border-color: #e0a325 !important;
+        color: #6b4a00 !important;
+      }
+      #rep-poly-info {
+        font-size: 11.5px;
+        color: #444;
+        margin: 4px 0;
+      }
+      #rep-perim-cur,
+      #rep-perim-mode {
+        font-size: 11.5px;
+        color: #444;
+        margin: 2px 0 4px;
+        line-height: 1.6;
+      }
+      #rep-perim-mode label {
+        margin-right: 8px;
+        white-space: nowrap;
+      }
+      .intake-add {
+        display: grid;
+        grid-template-columns: 1.3fr 76px 1fr auto;
+        gap: 4px;
+        margin-top: 4px;
+      }
+      .intake-add input {
+        min-width: 0;
+        font-size: 11.5px;
+      }
+      #rep-closed-note {
+        margin: 4px 0;
+        padding: 4px 8px;
+        font-size: 11.5px;
+        color: #555;
+        background: #efefef;
+        border: 1px solid #d0d0d0;
+      }
 
-  /* 관리자 화면 */
-  #admin-screen { display: none; position: fixed; inset: 0; z-index: 50; background: #eef1f4; flex-direction: column; }
-  #admin-screen.on { display: flex; }
-  #admin-body { flex: 1; overflow: auto; padding: 16px 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-content: start; }
-  .abox { background: #fff; border: 1px solid #c9c9c9; border-radius: 3px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
-  .abox .ahd { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #ddd; background: linear-gradient(#fff, #f0f0f0); font-weight: 700; font-size: 13px; }
-  .abox .ahd .uc { font-size: 10.5px; color: #666; font-weight: 400; border: 1px solid #ccc; padding: 0 5px; border-radius: 2px; white-space: nowrap; }
-  .abox .ahd { flex-wrap: wrap; }
-  .abox .abd { padding: 10px 12px; }
-  .abox table.grid td { padding: 3px 6px; }
-  .abox .form { margin-top: 8px; padding: 8px; background: #fafafa; border: 1px solid var(--line2); grid-template-columns: repeat(4, 1fr); align-items: end; }
-  .abox .form label.w { grid-column: 1 / -1; }
-  .abox .form button { justify-content: center; }
-  .abox .actions { white-space: nowrap; }
-  .abox .actions button { font-size: 11px; padding: 0 6px; }
-  .abox .tot { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; font-size: 11.5px; }
-  .abox .tot span { border: 1px solid var(--line2); background: #fafafa; padding: 2px 8px; }
-  .abox .tot b { color: #1c3f88; }
+      /* 관리자 화면 */
+      #admin-screen {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        background: #eef1f4;
+        flex-direction: column;
+      }
+      #admin-screen.on {
+        display: flex;
+      }
+      #admin-body {
+        flex: 1;
+        overflow: auto;
+        padding: 16px 24px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-content: start;
+      }
+      .abox {
+        background: #fff;
+        border: 1px solid #c9c9c9;
+        border-radius: 3px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+      .abox .ahd {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-bottom: 1px solid #ddd;
+        background: linear-gradient(#fff, #f0f0f0);
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .abox .ahd .uc {
+        font-size: 10.5px;
+        color: #666;
+        font-weight: 400;
+        border: 1px solid #ccc;
+        padding: 0 5px;
+        border-radius: 2px;
+        white-space: nowrap;
+      }
+      .abox .ahd {
+        flex-wrap: wrap;
+      }
+      .abox .abd {
+        padding: 10px 12px;
+      }
+      .abox table.grid td {
+        padding: 3px 6px;
+      }
+      .abox .form {
+        margin-top: 8px;
+        padding: 8px;
+        background: #fafafa;
+        border: 1px solid var(--line2);
+        grid-template-columns: repeat(4, 1fr);
+        align-items: end;
+      }
+      .abox .form label.w {
+        grid-column: 1 / -1;
+      }
+      .abox .form button {
+        justify-content: center;
+      }
+      .abox .actions {
+        white-space: nowrap;
+      }
+      .abox .actions button {
+        font-size: 11px;
+        padding: 0 6px;
+      }
+      .abox .tot {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 6px;
+        font-size: 11.5px;
+      }
+      .abox .tot span {
+        border: 1px solid var(--line2);
+        background: #fafafa;
+        padding: 2px 8px;
+      }
+      .abox .tot b {
+        color: #1c3f88;
+      }
 
-  #coord { position: absolute; right: 74px; bottom: 6px; z-index: 6; background: rgba(255,255,255,.9); border: 1px solid #999; padding: 1px 6px; font-size: 11px; color: #222; }
-  #draw-hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 8; background: #fff8e1; border: 1px solid #e0a325; color: #6b4a00; padding: 5px 12px; font-size: 12px; font-weight: 700; border-radius: 3px; box-shadow: 0 3px 10px rgba(0,0,0,.3); display: none; }
-  #draw-hint.on { display: block; }
-  #toast { position: fixed; left: 50%; bottom: 60px; transform: translateX(-50%); z-index: 120; background: #333; color: #fff; padding: 7px 14px; border-radius: 3px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.4); display: none; }
-  #toast.on { display: block; }
-  #modal-bg { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; }
-  #modal-bg.on { display: flex; }
-  #modal { width: min(760px, 92vw); max-height: 88vh; overflow: auto; background: #fff; border: 1px solid #666; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
-  #modal h3 { font-size: 13px; padding: 7px 12px; background: linear-gradient(#fff, #ececec); border-bottom: 1px solid #bbb; }
-  #modal-body { padding: 12px; line-height: 1.55; }
-  #modal-body .diff { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  #modal-body .diff .col { border: 1px solid var(--line2); background: #fafafa; padding: 6px 8px; }
-  #modal-body .diff .col h4 { font-size: 11.5px; margin-bottom: 4px; color: #555; }
-  #modal-body .chg { border-left: 3px solid #7c4dff; padding: 4px 8px; margin: 6px 0; background: #f7f4ff; }
-  #modal-actions { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 12px 12px; }
-  .role-hide { display: none !important; }
-</style>
-</head>
-<body>
-
-<!-- 로그인 (UC-AUTH-01) -->
-<div id="login-overlay">
-  <div class="lg-top">
-    <img class="lg-logo" src="assets/logo.png" alt="정부 상징">
-    <div class="lg-org"><b>산림청</b><span>Korea Forest Service</span></div>
-    <span class="lg-sep"></span>
-    <div class="lg-sys">산불 대응 AI 의사결정 지원 시스템<small>Wildfire Response Decision Support System</small></div>
-    <div class="lg-right"><span>현재 시각 <b id="lg-clock" class="num">—</b> KST</span><span>고객센터 1588-4370</span><span class="lg-env">시연</span></div>
-  </div>
-  <div class="lg-body">
-    <div class="lg-card">
-      <div class="lg-left">
-        <div class="lg-mark"><img src="assets/logo.png" alt="정부 상징"><div><b>산림청</b><span>Korea Forest Service</span></div></div>
-        <h2>산불 대응 AI 의사결정 지원 시스템</h2>
-        <p>확산 예측 결과를 표준매뉴얼 근거와 연결해 통합지휘권자에게 진화·대피 조치를 제안하는 의사결정 지원 화면입니다.</p>
-        <ul class="lg-feat"><li>산불 상황 보고(발화 정보·실측 화선)와 발생·접수 정보 조회</li><li>통합 상황도·1시간 간격 확산 예측(P1~P8)·산불 위험도</li><li>진화·대피 대응 제안서, 근거·이력 조회, AI 질의응답·상황 정정</li></ul>
-        <div class="lg-status"><span class="dot"></span>시스템 정상 · 시연 시나리오 2025-03-22 의성 안평면</div>
+      #coord {
+        position: absolute;
+        right: 74px;
+        bottom: 6px;
+        z-index: 6;
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid #999;
+        padding: 1px 6px;
+        font-size: 11px;
+        color: #222;
+      }
+      #draw-hint {
+        position: absolute;
+        left: 50%;
+        top: 10px;
+        transform: translateX(-50%);
+        z-index: 8;
+        background: #fff8e1;
+        border: 1px solid #e0a325;
+        color: #6b4a00;
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        border-radius: 3px;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+        display: none;
+      }
+      #draw-hint.on {
+        display: block;
+      }
+      #toast {
+        position: fixed;
+        left: 50%;
+        bottom: 60px;
+        transform: translateX(-50%);
+        z-index: 120;
+        background: #333;
+        color: #fff;
+        padding: 7px 14px;
+        border-radius: 3px;
+        font-size: 12px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+        display: none;
+      }
+      #toast.on {
+        display: block;
+      }
+      #modal-bg {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        background: rgba(0, 0, 0, 0.45);
+        display: none;
+        align-items: center;
+        justify-content: center;
+      }
+      #modal-bg.on {
+        display: flex;
+      }
+      #modal {
+        width: min(760px, 92vw);
+        max-height: 88vh;
+        overflow: auto;
+        background: #fff;
+        border: 1px solid #666;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+      }
+      #modal h3 {
+        font-size: 13px;
+        padding: 7px 12px;
+        background: linear-gradient(#fff, #ececec);
+        border-bottom: 1px solid #bbb;
+      }
+      #modal-body {
+        padding: 12px;
+        line-height: 1.55;
+      }
+      #modal-body .diff {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      #modal-body .diff .col {
+        border: 1px solid var(--line2);
+        background: #fafafa;
+        padding: 6px 8px;
+      }
+      #modal-body .diff .col h4 {
+        font-size: 11.5px;
+        margin-bottom: 4px;
+        color: #555;
+      }
+      #modal-body .chg {
+        border-left: 3px solid #7c4dff;
+        padding: 4px 8px;
+        margin: 6px 0;
+        background: #f7f4ff;
+      }
+      #modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 6px;
+        padding: 8px 12px 12px;
+      }
+      .role-hide {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 로그인 (UC-AUTH-01) -->
+    <div id="login-overlay">
+      <div class="lg-top">
+        <img class="lg-logo" src="assets/logo.png" alt="정부 상징" />
+        <div class="lg-org"><b>산림청</b><span>Korea Forest Service</span></div>
+        <span class="lg-sep"></span>
+        <div class="lg-sys">
+          산불 대응 AI 의사결정 지원 시스템<small
+            >Wildfire Response Decision Support System</small
+          >
+        </div>
+        <div class="lg-right">
+          <span>현재 시각 <b id="lg-clock" class="num">—</b> KST</span
+          ><span>고객센터 1588-4370</span><span class="lg-env">시연</span>
+        </div>
       </div>
-      <div class="lg-form">
-        <h1>LOGIN</h1>
-        <div class="lg-note">발급받은 계정으로 로그인하십시오. (회원가입 없음)</div>
-        <label>아이디<input id="login-id" value="cmd01" autocomplete="off"></label>
-        <label>비밀번호<input id="login-pw" type="password" value="1234"></label>
-        <label>사용자 구분<select id="login-role"><option value="commander">통합지휘권자 — 조작</option><option value="viewer">열람자 — 열람</option><option value="reporter">상황 보고자 — 보고</option><option value="admin">전산 관리자 — 관리</option></select></label>
-        <div class="lg-err" id="login-err"></div>
-        <button id="login-btn" class="lg-btn">로그인</button>
-        <div class="lg-hint">시연 계정: <code>cmd01</code> 통합지휘권자 · <code>view01</code> 열람자 · <code>rep01</code> 상황 보고자 · <code>admin01</code> 전산 관리자 (비밀번호 <code>1234</code>). 사용자 구분을 바꾸면 그 구분의 시연 계정이 자동으로 채워지며, 아이디·비밀번호·구분이 발급 계정과 맞아야 진입합니다. 5회 연속 실패하면 계정이 잠기고(전산 관리자만 해제), 세션 토큰은 30분 동안 유효합니다.</div>
+      <div class="lg-body">
+        <div class="lg-card">
+          <div class="lg-left">
+            <div class="lg-mark">
+              <img src="assets/logo.png" alt="정부 상징" />
+              <div><b>산림청</b><span>Korea Forest Service</span></div>
+            </div>
+            <h2>산불 대응 AI 의사결정 지원 시스템</h2>
+            <p>
+              확산 예측 결과를 표준매뉴얼 근거와 연결해 통합지휘권자에게
+              진화·대피 조치를 제안하는 의사결정 지원 화면입니다.
+            </p>
+            <ul class="lg-feat">
+              <li>산불 상황 보고(발화 정보·실측 화선)와 발생·접수 정보 조회</li>
+              <li>통합 상황도·1시간 간격 확산 예측(P1~P8)·산불 위험도</li>
+              <li>
+                진화·대피 대응 제안서, 근거·이력 조회, AI 질의응답·상황 정정
+              </li>
+            </ul>
+            <div class="lg-status">
+              <span class="dot"></span>시스템 정상 · 시연 시나리오 2025-03-22
+              의성 안평면
+            </div>
+          </div>
+          <div class="lg-form">
+            <h1>LOGIN</h1>
+            <div class="lg-note">
+              발급받은 계정으로 로그인하십시오. (회원가입 없음)
+            </div>
+            <label
+              >아이디<input id="login-id" value="cmd01" autocomplete="off"
+            /></label>
+            <label
+              >비밀번호<input id="login-pw" type="password" value="1234"
+            /></label>
+            <label
+              >사용자 구분<select id="login-role">
+                <option value="commander">통합지휘권자 — 조작</option>
+                <option value="viewer">열람자 — 열람</option>
+                <option value="reporter">상황 보고자 — 보고</option>
+                <option value="admin">전산 관리자 — 관리</option>
+              </select></label
+            >
+            <div class="lg-err" id="login-err"></div>
+            <button id="login-btn" class="lg-btn">로그인</button>
+            <div class="lg-hint">
+              시연 계정: <code>cmd01</code> 통합지휘권자 ·
+              <code>view01</code> 열람자 · <code>rep01</code> 상황 보고자 ·
+              <code>admin01</code> 전산 관리자 (비밀번호 <code>1234</code>).
+              사용자 구분을 바꾸면 그 구분의 시연 계정이 자동으로 채워지며,
+              아이디·비밀번호·구분이 발급 계정과 맞아야 진입합니다. 5회 연속
+              실패하면 계정이 잠기고(전산 관리자만 해제), 세션 토큰은 30분 동안
+              유효합니다.
+            </div>
+          </div>
+        </div>
+        <div class="lg-notice">
+          <div class="lg-notice-hd">공지사항</div>
+          <ul>
+            <li>
+              <span class="num">2025-03-21</span> 봄철 산불조심기간 대응단계
+              판단기준 안내 — 2026년 개편 체계(초기대응·확산대응 1·2단계)로
+              표시됩니다.
+            </li>
+            <li>
+              <span class="num">2025-03-15</span> 실측 화선 보고 주기 1시간 ·
+              확산 예측은 통합지휘권자가 실행 · 위험구역 5h/잠재 8h 기준 적용
+            </li>
+            <li>
+              <span class="num">2025-03-02</span> 시연 데이터 안내 — 화선은 합성
+              모델, 인구·수용 인원·자원·계정은 가상값입니다.
+            </li>
+          </ul>
+        </div>
+      </div>
+      <div class="lg-foot">
+        <span>(35208) 대전광역시 서구 청사로 189 정부대전청사 · 산림청</span
+        ><span>본 화면은 캡스톤 시연용 목업으로 실제 서비스가 아닙니다.</span
+        ><span>Copyright © Korea Forest Service. All rights reserved.</span>
       </div>
     </div>
-    <div class="lg-notice">
-      <div class="lg-notice-hd">공지사항</div>
-      <ul><li><span class="num">2025-03-21</span> 봄철 산불조심기간 대응단계 판단기준 안내 — 2026년 개편 체계(초기대응·확산대응 1·2단계)로 표시됩니다.</li><li><span class="num">2025-03-15</span> 실측 화선 보고 주기 1시간 · 확산 예측은 통합지휘권자가 실행 · 위험구역 5h/잠재 8h 기준 적용</li><li><span class="num">2025-03-02</span> 시연 데이터 안내 — 화선은 합성 모델, 인구·수용 인원·자원·계정은 가상값입니다.</li></ul>
+
+    <!-- 상단 1줄 -->
+    <header id="top1">
+      <div class="sys">
+        <img class="logo" src="assets/logo.png" alt="정부 상징" /><span
+          class="org"
+          >산림청</span
+        ><span class="vsep"></span>산불 대응 AI 의사결정 지원 시스템
+        <span class="env">시연</span>
+      </div>
+      <div class="sclock" title="서버 현재 시각 (한국표준시)">
+        현재 시각 <b id="hdr-clock" class="num">—</b><span class="tz">KST</span>
+      </div>
+      <div class="tog">
+        <button id="btn-resources" class="cv-only">진화자원</button>
+      </div>
+      <div class="menu">
+        <button class="red menu-btn on" data-menu="status">산불현황</button>
+        <button class="red menu-btn cv-only" data-menu="predict">
+          확산예측
+        </button>
+        <button class="red menu-btn commander-only" data-menu="risk">
+          위험도
+        </button>
+        <button class="red menu-btn commander-only" data-menu="proposal">
+          대응제안
+        </button>
+        <button class="red menu-btn commander-only" data-menu="history">
+          제안이력
+        </button>
+      </div>
+      <div class="user">
+        <span id="hdr-user">—</span
+        ><button id="btn-logout" class="ibtn" title="로그아웃">
+          <svg viewBox="0 0 24 24">
+            <path d="M10 17l5-5-5-5M15 12H3M21 4v16" />
+          </svg>
+        </button>
+      </div>
+    </header>
+    <!-- 상단 2줄: 레이어 (UC-SIT-03 지도 레이어 선택 — 인구·시설·도로·기관) -->
+    <div id="top2">
+      <div class="lg">
+        <span class="cap">예측</span
+        ><button class="blue lyr-btn" data-layer="fire">화선</button
+        ><button class="blue lyr-btn" data-layer="risk">위험구역</button>
+      </div>
+      <div class="lg">
+        <span class="cap">인구</span
+        ><button class="blue lyr-btn" data-layer="villages">마을</button
+        ><button class="blue lyr-btn off" data-layer="houses">주택</button>
+      </div>
+      <div class="lg">
+        <span class="cap">시설</span
+        ><button class="blue lyr-btn" data-layer="care">취약시설</button
+        ><button class="blue lyr-btn" data-layer="heritage">국가유산</button
+        ><button class="blue lyr-btn" data-layer="shelters">대피소</button
+        ><button class="blue lyr-btn" data-layer="water">담수지</button
+        ><button class="blue lyr-btn" data-layer="power">송전선</button>
+      </div>
+      <div class="lg">
+        <span class="cap">도로</span
+        ><button class="blue lyr-btn" data-layer="roads">도로</button
+        ><button class="blue lyr-btn off" data-layer="rail">철도</button
+        ><button class="blue lyr-btn" data-layer="routes">대피로</button>
+      </div>
+      <div class="lg">
+        <span class="cap">기관</span
+        ><button class="blue lyr-btn" data-layer="agencies">유관기관</button
+        ><button class="blue lyr-btn off" data-layer="crew">진화대</button
+        ><button class="blue lyr-btn" data-layer="admin">읍면경계</button>
+      </div>
     </div>
-  </div>
-  <div class="lg-foot"><span>(35208) 대전광역시 서구 청사로 189 정부대전청사 · 산림청</span><span>본 화면은 캡스톤 시연용 목업으로 실제 서비스가 아닙니다.</span><span>Copyright © Korea Forest Service. All rights reserved.</span></div>
-</div>
 
-<!-- 상단 1줄 -->
-<header id="top1">
-  <div class="sys"><img class="logo" src="assets/logo.png" alt="정부 상징"><span class="org">산림청</span><span class="vsep"></span>산불 대응 AI 의사결정 지원 시스템 <span class="env">시연</span></div>
-  <div class="sclock" title="서버 현재 시각 (한국표준시)">현재 시각 <b id="hdr-clock" class="num">—</b><span class="tz">KST</span></div>
-  <div class="tog"><button id="btn-resources" class="cv-only">진화자원</button></div>
-  <div class="menu">
-    <button class="red menu-btn on" data-menu="status">산불현황</button>
-    <button class="red menu-btn cv-only" data-menu="predict">확산예측</button>
-    <button class="red menu-btn commander-only" data-menu="risk">위험도</button>
-    <button class="red menu-btn commander-only" data-menu="proposal">대응제안</button>
-    <button class="red menu-btn commander-only" data-menu="history">제안이력</button>
-  </div>
-  <div class="user"><span id="hdr-user">—</span><button id="btn-logout" class="ibtn" title="로그아웃"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 4v16"/></svg></button></div>
-</header>
-<!-- 상단 2줄: 레이어 (UC-SIT-03 지도 레이어 선택 — 인구·시설·도로·기관) -->
-<div id="top2">
-  <div class="lg"><span class="cap">예측</span><button class="blue lyr-btn" data-layer="fire">화선</button><button class="blue lyr-btn" data-layer="risk">위험구역</button></div>
-  <div class="lg"><span class="cap">인구</span><button class="blue lyr-btn" data-layer="villages">마을</button><button class="blue lyr-btn off" data-layer="houses">주택</button></div>
-  <div class="lg"><span class="cap">시설</span><button class="blue lyr-btn" data-layer="care">취약시설</button><button class="blue lyr-btn" data-layer="heritage">국가유산</button><button class="blue lyr-btn" data-layer="shelters">대피소</button><button class="blue lyr-btn" data-layer="water">담수지</button><button class="blue lyr-btn" data-layer="power">송전선</button></div>
-  <div class="lg"><span class="cap">도로</span><button class="blue lyr-btn" data-layer="roads">도로</button><button class="blue lyr-btn off" data-layer="rail">철도</button><button class="blue lyr-btn" data-layer="routes">대피로</button></div>
-  <div class="lg"><span class="cap">기관</span><button class="blue lyr-btn" data-layer="agencies">유관기관</button><button class="blue lyr-btn off" data-layer="crew">진화대</button><button class="blue lyr-btn" data-layer="admin">읍면경계</button></div>
-</div>
-
-<div id="stage">
-  <div id="map"></div>
-  <div id="draw-hint"></div>
-  <div id="compass" title="북쪽 맞춤"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="#999"/><polygon points="50,8 56,50 50,44 44,50" fill="#d0342c"/><polygon points="50,92 56,50 50,56 44,50" fill="#555"/><polygon points="8,50 50,44 44,50 50,56" fill="#777"/><polygon points="92,50 50,44 56,50 50,56" fill="#777"/><text x="50" y="7" font-size="10" text-anchor="middle" fill="#222" font-weight="700">북</text><text x="50" y="99" font-size="10" text-anchor="middle" fill="#222">남</text><text x="4" y="53" font-size="10" fill="#222">서</text><text x="90" y="53" font-size="10" fill="#222">동</text></svg></div>
-
-  <div id="tool-strip">
-    <button class="ibtn" id="ts-zoom-in" title="확대"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
-    <div class="zoom"><input id="ts-zoom" type="range" min="8" max="16" step="0.1" value="11.4" title="축척"></div>
-    <button class="ibtn" id="ts-zoom-out" title="축소"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
-    <button class="ibtn" id="ts-fit" title="범위 맞춤"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
-    <button class="ibtn" id="ts-sat" title="위성영상/일반지도"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/></svg></button>
-  </div>
-  <div id="vtabs">
-    <div class="vtab on" data-v="fire">산불</div>
-    <div class="vtab" data-v="legend">범례</div>
-  </div>
-
-  <!-- 상황정보 패널 (통합지휘권자·열람자) -->
-  <div id="info-panel" class="fpanel on">
-    <div class="fhd"><svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#555;fill:none;stroke-width:1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="clock" id="ip-clock">—</span><span class="muted" id="ip-name">—</span><span style="flex:1"></span><button class="ibtn" id="ip-fit" title="발화점으로 이동"><svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg></button><button class="ibtn" id="ip-close" title="닫기"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
-    <div class="fbody">
-      <div class="ip-head">
-        <table class="grid">
-          <tr><td class="k">발생 장소</td><td colspan="3" id="ip-addr">—</td></tr>
-          <tr><td class="k">신고</td><td colspan="3" id="ip-report">—</td></tr>
-          <tr><td class="k">진행상태</td><td id="ip-status">—</td><td class="k">단계</td><td id="ip-stage">—</td></tr>
-          <tr><td class="k">기상</td><td colspan="3" id="ip-weather">—</td></tr>
-        </table>
-      </div>
-      <div class="ip-tabs">
-        <button class="ip-tab on" data-tab="status">산불현황</button>
-        <button class="ip-tab cv-only" data-tab="predict">확산예측</button>
-        <button class="ip-tab commander-only" data-tab="risk">위험도</button>
-        <button class="ip-tab commander-only" data-tab="proposal">대응제안</button>
-        <button class="ip-tab commander-only" data-tab="history">이력</button>
+    <div id="stage">
+      <div id="map"></div>
+      <div id="draw-hint"></div>
+      <div id="compass" title="북쪽 맞춤">
+        <svg viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="44" fill="none" stroke="#999" />
+          <polygon points="50,8 56,50 50,44 44,50" fill="#d0342c" />
+          <polygon points="50,92 56,50 50,56 44,50" fill="#555" />
+          <polygon points="8,50 50,44 44,50 50,56" fill="#777" />
+          <polygon points="92,50 50,44 56,50 50,56" fill="#777" />
+          <text
+            x="50"
+            y="7"
+            font-size="10"
+            text-anchor="middle"
+            fill="#222"
+            font-weight="700"
+          >
+            북
+          </text>
+          <text x="50" y="99" font-size="10" text-anchor="middle" fill="#222">
+            남
+          </text>
+          <text x="4" y="53" font-size="10" fill="#222">서</text>
+          <text x="90" y="53" font-size="10" fill="#222">동</text>
+        </svg>
       </div>
 
-      <!-- UC-SIT-02 산불 발생·접수 정보 조회 · UC-SIT-01 종료 처리 -->
-      <div id="ipt-status" class="ipt on">
-        <div class="sec">산불 목록<span class="r" id="st-mode"></span></div>
-        <div id="st-list"></div>
-        <div class="sec">발생·접수 정보<i class="info l" data-tip="발생 장소·신고 내용·접수 시각·진행상태(접수 / 진행 중, 최신 실측 화선 버전·입력 시각). 예측이 아닌 현재 상황입니다. 실측 화선은 상황 보고자가 보고한 폴리곤이며 면적은 그 폴리곤으로 계산합니다."></i></div>
-        <div id="st-detail"></div>
-        <div class="btnrow" id="st-actions"></div>
+      <div id="tool-strip">
+        <button class="ibtn" id="ts-zoom-in" title="확대">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+        </button>
+        <div class="zoom">
+          <input
+            id="ts-zoom"
+            type="range"
+            min="8"
+            max="16"
+            step="0.1"
+            value="11.4"
+            title="축척"
+          />
+        </div>
+        <button class="ibtn" id="ts-zoom-out" title="축소">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14" /></svg>
+        </button>
+        <button class="ibtn" id="ts-fit" title="범위 맞춤">
+          <svg viewBox="0 0 24 24">
+            <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+          </svg>
+        </button>
+        <button class="ibtn" id="ts-sat" title="위성영상/일반지도">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M3 15l5-5 4 4 3-3 6 6" />
+          </svg>
+        </button>
+      </div>
+      <div id="vtabs">
+        <div class="vtab on" data-v="fire">산불</div>
+        <div class="vtab" data-v="legend">범례</div>
       </div>
 
-      <!-- UC-PRED-01 확산 예측 실행·갱신(통합지휘권자) · UC-SIT-03 시간 재생(통합지휘권자·열람자) -->
-      <div id="ipt-predict" class="ipt">
-        <div class="btnrow"><button id="btn-predict" class="primary commander-only" style="flex:1;justify-content:center">확산 예측 실행</button></div>
-        <div class="progress"><i id="predict-progress"></i></div>
-        <div id="predict-status">—</div>
-        <div class="sec">시간별 확산 재생<i class="info l" data-tip="t0부터 +8시간까지 1시간 간격 확산 범위 P(t)를 지도 위에 채우고 도달한 마을을 강조합니다. 다음 1시간은 점선 윤곽입니다. 예측은 통합지휘권자가 실행하며 자동으로 실행되지 않습니다."></i></div>
-        <div id="playbar">
-          <button id="btn-play" class="ibtn primary" title="재생"><svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z" fill="currentColor" stroke="none"/></svg></button>
-          <button id="btn-stop" class="ibtn" title="처음으로"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" fill="currentColor" stroke="none"/></svg></button>
-          <div style="flex:1"><input id="time-slider" type="range" min="0" max="8" step="1" value="0" style="width:100%"><div class="ticks"><span>t0</span><span>+2</span><span>+4</span><span>+6</span><span>+8h</span></div></div>
-          <div id="time-label" class="num">—</div>
-          <select id="speed-sel"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select>
+      <!-- 상황정보 패널 (통합지휘권자·열람자) -->
+      <div id="info-panel" class="fpanel on">
+        <div class="fhd">
+          <svg
+            viewBox="0 0 24 24"
+            style="
+              width: 14px;
+              height: 14px;
+              stroke: #555;
+              fill: none;
+              stroke-width: 1.8;
+            "
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" /></svg
+          ><span class="clock" id="ip-clock">—</span
+          ><span class="muted" id="ip-name">—</span><span style="flex: 1"></span
+          ><button class="ibtn" id="ip-fit" title="발화점으로 이동">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+              <circle cx="12" cy="12" r="4" />
+            </svg></button
+          ><button class="ibtn" id="ip-close" title="닫기">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
+        <div class="fbody">
+          <div class="ip-head">
+            <table class="grid">
+              <tr>
+                <td class="k">발생 장소</td>
+                <td colspan="3" id="ip-addr">—</td>
+              </tr>
+              <tr>
+                <td class="k">신고</td>
+                <td colspan="3" id="ip-report">—</td>
+              </tr>
+              <tr>
+                <td class="k">진행상태</td>
+                <td id="ip-status">—</td>
+                <td class="k">단계</td>
+                <td id="ip-stage">—</td>
+              </tr>
+              <tr>
+                <td class="k">기상</td>
+                <td colspan="3" id="ip-weather">—</td>
+              </tr>
+            </table>
+          </div>
+          <div class="ip-tabs">
+            <button class="ip-tab on" data-tab="status">산불현황</button>
+            <button class="ip-tab cv-only" data-tab="predict">확산예측</button>
+            <button class="ip-tab commander-only" data-tab="risk">
+              위험도
+            </button>
+            <button class="ip-tab commander-only" data-tab="proposal">
+              대응제안
+            </button>
+            <button class="ip-tab commander-only" data-tab="history">
+              이력
+            </button>
+          </div>
+
+          <!-- UC-SIT-02 산불 발생·접수 정보 조회 · UC-SIT-01 종료 처리 -->
+          <div id="ipt-status" class="ipt on">
+            <div class="sec">산불 목록<span class="r" id="st-mode"></span></div>
+            <div id="st-list"></div>
+            <div class="sec">
+              발생·접수 정보<i
+                class="info l"
+                data-tip="발생 장소·신고 내용·접수 시각·진행상태(접수 / 진행 중, 최신 실측 화선 버전·입력 시각). 예측이 아닌 현재 상황입니다. 실측 화선은 상황 보고자가 보고한 폴리곤이며 면적은 그 폴리곤으로 계산합니다."
+              ></i>
+            </div>
+            <div id="st-detail"></div>
+            <div class="btnrow" id="st-actions"></div>
+          </div>
+
+          <!-- UC-PRED-01 확산 예측 실행·갱신(통합지휘권자) · UC-SIT-03 시간 재생(통합지휘권자·열람자) -->
+          <div id="ipt-predict" class="ipt">
+            <div class="btnrow">
+              <button
+                id="btn-predict"
+                class="primary commander-only"
+                style="flex: 1; justify-content: center"
+              >
+                확산 예측 실행
+              </button>
+            </div>
+            <div class="progress"><i id="predict-progress"></i></div>
+            <div id="predict-status">—</div>
+            <div class="sec">
+              시간별 확산 재생<i
+                class="info l"
+                data-tip="t0부터 +8시간까지 1시간 간격 확산 범위 P(t)를 지도 위에 채우고 도달한 마을을 강조합니다. 다음 1시간은 점선 윤곽입니다. 예측은 통합지휘권자가 실행하며 자동으로 실행되지 않습니다."
+              ></i>
+            </div>
+            <div id="playbar">
+              <button id="btn-play" class="ibtn primary" title="재생">
+                <svg viewBox="0 0 24 24">
+                  <path d="M7 5l12 7-12 7z" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+              <button id="btn-stop" class="ibtn" title="처음으로">
+                <svg viewBox="0 0 24 24">
+                  <rect
+                    x="6"
+                    y="6"
+                    width="12"
+                    height="12"
+                    fill="currentColor"
+                    stroke="none"
+                  />
+                </svg>
+              </button>
+              <div style="flex: 1">
+                <input
+                  id="time-slider"
+                  type="range"
+                  min="0"
+                  max="8"
+                  step="1"
+                  value="0"
+                  style="width: 100%"
+                />
+                <div class="ticks">
+                  <span>t0</span><span>+2</span><span>+4</span><span>+6</span
+                  ><span>+8h</span>
+                </div>
+              </div>
+              <div id="time-label" class="num">—</div>
+              <select id="speed-sel">
+                <option value="1">1×</option>
+                <option value="2" selected>2×</option>
+                <option value="4">4×</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- UC-PRED-02 산불 위험도 확인(통합지휘권자) -->
+          <div id="ipt-risk" class="ipt">
+            <div class="sec">
+              산불 위험도<i
+                class="info l"
+                data-tip="발화 지점의 조건위험도(0~100)와 등급, 요인별 기여. 기상·지형·연료·인프라 4요인의 점수(1~5)를 가중치 0.35·0.30·0.25·0.10으로 평균해 25×(가중평균−1)로 계산합니다. 결측 변수는 제외하고 계산하며 목록을 함께 표시합니다. 산불별 최대 위험도를 저장해 종료 후에도 보여 줍니다. 요인 점수는 시연값."
+              ></i>
+            </div>
+            <div id="risk-box"></div>
+          </div>
+
+          <!-- UC-PROP-01 진화 제안 · UC-PROP-02 대피 제안 · UC-PROP-03 근거 -->
+          <div id="ipt-proposal" class="ipt">
+            <div id="prop-meta">—</div>
+            <div id="stage-banner"></div>
+            <div class="ptabs">
+              <button class="ptab on" data-axis="진화">진화 (S1~S7)</button
+              ><button class="ptab" data-axis="대피">대피 (E1~E7)</button>
+            </div>
+            <div class="pfilters">
+              <button class="pfilter on" data-f="all">전체</button
+              ><button class="pfilter" data-f="즉시">즉시</button
+              ><button class="pfilter" data-f="대기">대기</button
+              ><button class="pfilter" data-f="협의">협의</button
+              ><button class="pfilter" data-f="요청">요청</button
+              ><i
+                class="info l"
+                data-tip="즉시: 통합지휘권자 권한으로 지금 시행 · 대기: 조건 충족 시 시행 · 협의: 산림청장과 협의 · 요청: 타 기관에 요청. 항목을 누르면 판정 이유·대상·권한·근거를 펼칩니다. 문장 끝 번호는 근거, '변경' 태그는 직전 버전 대비 변경 내용입니다. 매뉴얼에 근거가 없는 수량·문장은 표시하지 않고 해당 칸에 '근거가 부족하여 표시하지 않았습니다'로 알리며, 이벤트 로그에 '근거 부족'으로 기록합니다."
+              ></i>
+            </div>
+            <div id="cards"></div>
+            <div id="prop-summary"></div>
+          </div>
+
+          <!-- UC-PROP-04 제안 이력·변경사항 · 시스템 이벤트 로그 -->
+          <div id="ipt-history" class="ipt">
+            <div class="sec">
+              제안서 버전 이력<i
+                class="info l"
+                data-tip="예측 갱신(새 실측 화선에 따른 재예측)이나 AI 상황 정정으로 제안서가 생성될 때마다 새 버전이 쌓입니다. 「보기」로 그 버전 전체를 '이전 버전' 표시와 함께 열람하고, 「비교」로 직전 버전 대비 바뀐 항목을 확인합니다."
+              ></i>
+            </div>
+            <div id="hist-runs"></div>
+            <div class="sec">
+              이벤트 로그 (읽기 전용)<i
+                class="info l"
+                data-tip="추가만 하고 수정·삭제하지 않는 기록입니다. 구분: 시스템(로그인·로그아웃)·입력·예측·제안·근거 부족·정정·종료·관리(전산 관리자의 계정·진화자원 변경)."
+              ></i>
+            </div>
+            <div id="hist-events"></div>
+          </div>
+
+          <div id="evidence-drawer">
+            <div class="hd">
+              <h3 id="ev-title">근거</h3>
+              <button
+                id="btn-ev-close"
+                class="ibtn"
+                style="
+                  width: 22px;
+                  height: 22px;
+                  padding: 0;
+                  justify-content: center;
+                "
+              >
+                ✕
+              </button>
+            </div>
+            <div id="ev-body"></div>
+          </div>
         </div>
       </div>
 
-      <!-- UC-PRED-02 산불 위험도 확인(통합지휘권자) -->
-      <div id="ipt-risk" class="ipt">
-        <div class="sec">산불 위험도<i class="info l" data-tip="발화 지점의 조건위험도(0~100)와 등급, 요인별 기여. 기상·지형·연료·인프라 4요인의 점수(1~5)를 가중치 0.35·0.30·0.25·0.10으로 평균해 25×(가중평균−1)로 계산합니다. 결측 변수는 제외하고 계산하며 목록을 함께 표시합니다. 산불별 최대 위험도를 저장해 종료 후에도 보여 줍니다. 요인 점수는 시연값."></i></div>
-        <div id="risk-box"></div>
+      <!-- 상황 보고자: 상황 입력 판 (UC-REPORT-01 산불 상황 보고 · UC-SIT-02 산불 발생·접수 정보 조회) -->
+      <div id="rep-panel" class="fpanel">
+        <div class="fhd">
+          <span class="clock">상황 입력 판</span
+          ><i
+            class="info b"
+            data-tip="처음 보고할 때 발화 위치·발생 일시·신고 내용·접수 시각·기관별 접수 기록을 입력하면 산불이 '접수' 상태로 생깁니다. 이후 1시간마다 실측 화선(지금 타고 있는 범위)을 폴리곤으로 보고하며, 첫 실측 화선이 저장되면 '진행 중'으로 바뀝니다. 초기대응에서는 화선을 생략할 수 있습니다. 실측 화선이 통합지휘권자의 재예측·제안 재생성의 출발점입니다."
+          ></i
+          ><span style="flex: 1"></span>
+        </div>
+        <div class="fbody">
+          <div class="sec">산불 목록<span class="r" id="rep-mode"></span></div>
+          <div id="rep-list"></div>
+          <div class="btnrow">
+            <button
+              id="rep-new"
+              class="primary"
+              style="flex: 1; justify-content: center"
+            >
+              새 산불 보고</button
+            ><button
+              id="rep-perim"
+              style="flex: 1; justify-content: center"
+              title="선택한 산불의 직전 실측 화선을 불러와 수정 후 새 버전으로 제출"
+            >
+              실측 화선 보고
+            </button>
+          </div>
+          <div class="sec" id="rep-form-title">발화 정보</div>
+          <div id="rep-closed-note" style="display: none">
+            종료 처리된 산불입니다. 상황 보고를 받지 않습니다.
+          </div>
+          <div class="form">
+            <label class="w">산불명 *<input id="rep-name" /></label>
+            <label class="w">발생 장소(주소) *<input id="rep-addr" /></label>
+            <label
+              >발화 위치 경도 *<input id="rep-lng" type="number" step="0.00001"
+            /></label>
+            <label
+              >발화 위치 위도 *<input id="rep-lat" type="number" step="0.00001"
+            /></label>
+            <label class="w"
+              ><span></span
+              ><button id="rep-pick" style="justify-content: center">
+                지도에서 발화 위치 지정
+              </button></label
+            >
+            <label
+              >발생 일시<input
+                id="rep-start"
+                type="datetime-local"
+                title="접수 단계에서는 비워 둘 수 있습니다"
+            /></label>
+            <label
+              >신고 접수 일시 *<input id="rep-report" type="datetime-local"
+            /></label>
+            <label class="w"
+              >신고 내용<textarea id="rep-text"></textarea>
+            </label>
+          </div>
+          <div class="sec">
+            기관별 접수 기록<i
+              class="info l"
+              data-tip="접수 기관·접수 시각·접수 경로(119 신고, 상황 전파 등)를 추가합니다."
+            ></i>
+          </div>
+          <div id="rep-intake"></div>
+          <div class="intake-add">
+            <input id="ik-org" placeholder="접수 기관" /><input
+              id="ik-at"
+              type="time"
+            /><input id="ik-ch" placeholder="접수 경로(예: 119 신고)" /><button
+              id="ik-add"
+            >
+              추가
+            </button>
+          </div>
+          <div class="sec">
+            실측 화선(폴리곤)<span class="r small muted"
+              >초기대응에서는 생략 가능</span
+            ><i
+              class="info l"
+              data-tip="지도에서 꼭짓점을 차례로 눌러 그리고 「그리기 완료」를 누르거나, GeoJSON Polygon 좌표를 붙여 넣습니다. 「실측 화선 보고」는 직전 화선을 불러옵니다. 저장하면 새 버전(v2, v3 …)으로 쌓이고, 「정정」을 고르면 이전 버전은 '정정됨'으로 보존됩니다."
+            ></i>
+          </div>
+          <div id="rep-perim-cur"></div>
+          <div class="btnrow">
+            <button id="rep-draw">지도에서 그리기</button
+            ><button id="rep-draw-done" disabled>그리기 완료</button
+            ><button id="rep-draw-clear">지우기</button
+            ><button id="rep-geojson">GeoJSON 붙여넣기</button>
+          </div>
+          <div id="rep-poly-info">제출할 새 화선 없음</div>
+          <div id="rep-perim-mode"></div>
+          <div class="btnrow" style="margin-top: 8px">
+            <button
+              id="rep-save"
+              class="primary"
+              style="flex: 1; justify-content: center"
+            >
+              저장(제출)
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- UC-PROP-01 진화 제안 · UC-PROP-02 대피 제안 · UC-PROP-03 근거 -->
-      <div id="ipt-proposal" class="ipt">
-        <div id="prop-meta">—</div>
-        <div id="stage-banner"></div>
-        <div class="ptabs"><button class="ptab on" data-axis="진화">진화 (S1~S7)</button><button class="ptab" data-axis="대피">대피 (E1~E7)</button></div>
-        <div class="pfilters"><button class="pfilter on" data-f="all">전체</button><button class="pfilter" data-f="즉시">즉시</button><button class="pfilter" data-f="대기">대기</button><button class="pfilter" data-f="협의">협의</button><button class="pfilter" data-f="요청">요청</button><i class="info l" data-tip="즉시: 통합지휘권자 권한으로 지금 시행 · 대기: 조건 충족 시 시행 · 협의: 산림청장과 협의 · 요청: 타 기관에 요청. 항목을 누르면 판정 이유·대상·권한·근거를 펼칩니다. 문장 끝 번호는 근거, '변경' 태그는 직전 버전 대비 변경 내용입니다. 매뉴얼에 근거가 없는 수량·문장은 표시하지 않고 해당 칸에 '근거가 부족하여 표시하지 않았습니다'로 알리며, 이벤트 로그에 '근거 부족'으로 기록합니다."></i></div>
-        <div id="cards"></div>
-        <div id="prop-summary"></div>
+      <!-- AI 어시스턴트 (UC-QA-01 질의응답 · UC-QA-02 상황 정정) -->
+      <div id="chat-panel" class="fpanel">
+        <div class="fhd">
+          <span class="clock">AI 어시스턴트</span
+          ><i
+            class="info b"
+            data-tip="현재 상황·대응 제안·근거를 자연어나 빠른 질문으로 묻습니다(상황·제안은 바뀌지 않음). 현장에서 바뀐 사실(예: 박곡리 대피 완료, 헬기 6대 투입, 예상 진화시간 12시간, 대피명령 발령)은 「상황 정정」으로 입력하면 정정 확인 카드에서 확인 후 저장하고, 예측은 그대로 둔 채 제안서를 다시 만듭니다. 답변은 검색된 표준매뉴얼 근거만 인용하며, 근거가 부족한 답변은 표시하지 않고 그 사실만 알린 뒤 이벤트 로그에 '근거 부족'으로 기록합니다. 시연에서는 대본 응답입니다."
+          ></i
+          ><span style="flex: 1"></span
+          ><button class="ibtn" id="chat-close">✕</button>
+        </div>
+        <div class="fbody">
+          <div id="chat-ctx">
+            항목 미지정 — 대응제안 항목의 「질문」으로 항목을 붙일 수 있습니다
+          </div>
+          <div id="chat-log"></div>
+          <div class="chat-quick" id="chat-quick"></div>
+          <form id="chat-form">
+            <button
+              type="button"
+              id="btn-corr"
+              title="상황 변화 입력(정정 확인 후 저장·제안서 재생성)"
+            >
+              상황 정정</button
+            ><input
+              id="chat-input"
+              placeholder="질문 입력 (상황 변화는 「상황 정정」)"
+              autocomplete="off"
+            /><button id="btn-chat-send" class="primary">전송</button>
+          </form>
+        </div>
       </div>
 
-      <!-- UC-PROP-04 제안 이력·변경사항 · 시스템 이벤트 로그 -->
-      <div id="ipt-history" class="ipt">
-        <div class="sec">제안서 버전 이력<i class="info l" data-tip="예측 갱신(새 실측 화선에 따른 재예측)이나 AI 상황 정정으로 제안서가 생성될 때마다 새 버전이 쌓입니다. 「보기」로 그 버전 전체를 '이전 버전' 표시와 함께 열람하고, 「비교」로 직전 버전 대비 바뀐 항목을 확인합니다."></i></div>
-        <div id="hist-runs"></div>
-        <div class="sec">이벤트 로그 (읽기 전용)<i class="info l" data-tip="추가만 하고 수정·삭제하지 않는 기록입니다. 구분: 시스템(로그인·로그아웃)·입력·예측·제안·근거 부족·정정·종료·관리(전산 관리자의 계정·진화자원 변경)."></i></div>
-        <div id="hist-events"></div>
+      <!-- 진화자원 현황 (UC-SIT-03) -->
+      <div id="left-panel" class="fpanel">
+        <div class="fhd">
+          <span class="clock">진화자원 현황</span
+          ><i
+            class="info b"
+            data-tip="전산 관리자가 관리하는 진화자원 데이터(UC-ADMIN-02)의 헬기·인력·차량 현황입니다. 기본은 「가용만 보기」이며, 끄면 보유·투입·대기까지 모두 표시합니다. 가용 = 투입 + 대기(정비 제외). 자원 수·호출부호는 가상값."
+          ></i
+          ><span style="flex: 1"></span
+          ><button class="ibtn" id="lp-close">✕</button>
+        </div>
+        <div class="fbody" id="lp-body"></div>
       </div>
 
-      <div id="evidence-drawer"><div class="hd"><h3 id="ev-title">근거</h3><button id="btn-ev-close" class="ibtn" style="width:22px;height:22px;padding:0;justify-content:center">✕</button></div><div id="ev-body"></div></div>
-    </div>
-  </div>
-
-  <!-- 상황 보고자: 상황 입력 판 (UC-REPORT-01 산불 상황 보고 · UC-SIT-02 산불 발생·접수 정보 조회) -->
-  <div id="rep-panel" class="fpanel">
-    <div class="fhd"><span class="clock">상황 입력 판</span><i class="info b" data-tip="처음 보고할 때 발화 위치·발생 일시·신고 내용·접수 시각·기관별 접수 기록을 입력하면 산불이 '접수' 상태로 생깁니다. 이후 1시간마다 실측 화선(지금 타고 있는 범위)을 폴리곤으로 보고하며, 첫 실측 화선이 저장되면 '진행 중'으로 바뀝니다. 초기대응에서는 화선을 생략할 수 있습니다. 실측 화선이 통합지휘권자의 재예측·제안 재생성의 출발점입니다."></i><span style="flex:1"></span></div>
-    <div class="fbody">
-      <div class="sec">산불 목록<span class="r" id="rep-mode"></span></div>
-      <div id="rep-list"></div>
-      <div class="btnrow"><button id="rep-new" class="primary" style="flex:1;justify-content:center">새 산불 보고</button><button id="rep-perim" style="flex:1;justify-content:center" title="선택한 산불의 직전 실측 화선을 불러와 수정 후 새 버전으로 제출">실측 화선 보고</button></div>
-      <div class="sec" id="rep-form-title">발화 정보</div>
-      <div id="rep-closed-note" style="display:none">종료 처리된 산불입니다. 상황 보고를 받지 않습니다.</div>
-      <div class="form">
-        <label class="w">산불명 *<input id="rep-name"></label>
-        <label class="w">발생 장소(주소) *<input id="rep-addr"></label>
-        <label>발화 위치 경도 *<input id="rep-lng" type="number" step="0.00001"></label>
-        <label>발화 위치 위도 *<input id="rep-lat" type="number" step="0.00001"></label>
-        <label class="w"><span></span><button id="rep-pick" style="justify-content:center">지도에서 발화 위치 지정</button></label>
-        <label>발생 일시<input id="rep-start" type="datetime-local" title="접수 단계에서는 비워 둘 수 있습니다"></label>
-        <label>신고 접수 일시 *<input id="rep-report" type="datetime-local"></label>
-        <label class="w">신고 내용<textarea id="rep-text"></textarea></label>
+      <div id="legend-panel" class="fpanel">
+        <div class="fhd">
+          <span class="clock">범례</span><span style="flex: 1"></span
+          ><button class="ibtn" id="lg-close">✕</button>
+        </div>
+        <div class="fbody" id="lg-body"></div>
       </div>
-      <div class="sec">기관별 접수 기록<i class="info l" data-tip="접수 기관·접수 시각·접수 경로(119 신고, 상황 전파 등)를 추가합니다."></i></div>
-      <div id="rep-intake"></div>
-      <div class="intake-add"><input id="ik-org" placeholder="접수 기관"><input id="ik-at" type="time"><input id="ik-ch" placeholder="접수 경로(예: 119 신고)"><button id="ik-add">추가</button></div>
-      <div class="sec">실측 화선(폴리곤)<span class="r small muted">초기대응에서는 생략 가능</span><i class="info l" data-tip="지도에서 꼭짓점을 차례로 눌러 그리고 「그리기 완료」를 누르거나, GeoJSON Polygon 좌표를 붙여 넣습니다. 「실측 화선 보고」는 직전 화선을 불러옵니다. 저장하면 새 버전(v2, v3 …)으로 쌓이고, 「정정」을 고르면 이전 버전은 '정정됨'으로 보존됩니다."></i></div>
-      <div id="rep-perim-cur"></div>
-      <div class="btnrow"><button id="rep-draw">지도에서 그리기</button><button id="rep-draw-done" disabled>그리기 완료</button><button id="rep-draw-clear">지우기</button><button id="rep-geojson">GeoJSON 붙여넣기</button></div>
-      <div id="rep-poly-info">제출할 새 화선 없음</div>
-      <div id="rep-perim-mode"></div>
-      <div class="btnrow" style="margin-top:8px"><button id="rep-save" class="primary" style="flex:1;justify-content:center">저장(제출)</button></div>
+
+      <button id="chat-fab" class="commander-only">
+        <svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z" /></svg>AI
+        어시스턴트
+      </button>
+      <div id="coord">—</div>
     </div>
-  </div>
 
-  <!-- AI 어시스턴트 (UC-QA-01 질의응답 · UC-QA-02 상황 정정) -->
-  <div id="chat-panel" class="fpanel">
-    <div class="fhd"><span class="clock">AI 어시스턴트</span><i class="info b" data-tip="현재 상황·대응 제안·근거를 자연어나 빠른 질문으로 묻습니다(상황·제안은 바뀌지 않음). 현장에서 바뀐 사실(예: 박곡리 대피 완료, 헬기 6대 투입, 예상 진화시간 12시간, 대피명령 발령)은 「상황 정정」으로 입력하면 정정 확인 카드에서 확인 후 저장하고, 예측은 그대로 둔 채 제안서를 다시 만듭니다. 답변은 검색된 표준매뉴얼 근거만 인용하며, 근거가 부족한 답변은 표시하지 않고 그 사실만 알린 뒤 이벤트 로그에 '근거 부족'으로 기록합니다. 시연에서는 대본 응답입니다."></i><span style="flex:1"></span><button class="ibtn" id="chat-close">✕</button></div>
-    <div class="fbody">
-      <div id="chat-ctx">항목 미지정 — 대응제안 항목의 「질문」으로 항목을 붙일 수 있습니다</div>
-      <div id="chat-log"></div>
-      <div class="chat-quick" id="chat-quick"></div>
-      <form id="chat-form"><button type="button" id="btn-corr" title="상황 변화 입력(정정 확인 후 저장·제안서 재생성)">상황 정정</button><input id="chat-input" placeholder="질문 입력 (상황 변화는 「상황 정정」)" autocomplete="off"><button id="btn-chat-send" class="primary">전송</button></form>
+    <!-- 전산 관리자 화면 (UC-ADMIN-01 계정·권한 관리 · UC-ADMIN-02 진화자원 데이터 관리) -->
+    <div id="admin-screen">
+      <header
+        id="admin-top"
+        style="
+          height: 40px;
+          background: #fff;
+          border-bottom: 1px solid var(--line);
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 0 10px;
+        "
+      >
+        <div
+          class="sys"
+          style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: 800;
+            color: #1c3f88;
+          "
+        >
+          <img
+            src="assets/logo.png"
+            alt=""
+            style="width: 26px; height: 26px; object-fit: contain"
+          /><span
+            style="color: #17325e; letter-spacing: 0.08em; font-size: 16px"
+            >산림청</span
+          ><span
+            style="width: 1px; height: 18px; background: #cdd3da; margin: 0 4px"
+          ></span
+          >산불 대응 AI 의사결정 지원 시스템
+          <span
+            style="
+              font-size: 10px;
+              font-weight: 400;
+              color: #777;
+              border: 1px solid #ccc;
+              padding: 0 4px;
+              border-radius: 2px;
+            "
+            >평시 관리</span
+          >
+        </div>
+        <div class="sclock" title="서버 현재 시각 (한국표준시)">
+          현재 시각 <b id="admin-clock" class="num">—</b
+          ><span class="tz">KST</span>
+        </div>
+        <div
+          style="
+            margin-left: auto;
+            font-size: 11.5px;
+            color: #444;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          "
+        >
+          <span id="admin-user">—</span
+          ><button
+            id="admin-logout"
+            class="ibtn"
+            title="로그아웃"
+            style="
+              width: 24px;
+              height: 24px;
+              padding: 0;
+              justify-content: center;
+            "
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M10 17l5-5-5-5M15 12H3M21 4v16" />
+            </svg>
+          </button>
+        </div>
+      </header>
+      <div id="admin-body">
+        <div class="abox">
+          <div class="ahd">
+            계정·권한 관리 <span class="uc">UC-ADMIN-01</span
+            ><span class="small muted" style="font-weight: 400"
+              >계정을 발급·회수하고 조작(통합지휘권자)·열람(열람자)·보고(상황
+              보고자) 권한을 나눕니다. 아이디·초기 비밀번호는 시스템이 만들고,
+              관리 권한 계정은 설치 시 사전 발급합니다</span
+            >
+          </div>
+          <div class="abd" id="admin-accounts"></div>
+        </div>
+        <div class="abox">
+          <div class="ahd">
+            진화자원 데이터 관리 <span class="uc">UC-ADMIN-02</span
+            ><span class="small muted" style="font-weight: 400"
+              >보유 헬기·차량·인력을 등록·수정·삭제합니다(필수:
+              구분·명칭(호출부호)·소속·수량). 통합 상황도의 진화자원 현황과 다음
+              대응 제안(S3·S6)의 입력이 됩니다</span
+            >
+          </div>
+          <div class="abd" id="admin-resources"></div>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <!-- 진화자원 현황 (UC-SIT-03) -->
-  <div id="left-panel" class="fpanel">
-    <div class="fhd"><span class="clock">진화자원 현황</span><i class="info b" data-tip="전산 관리자가 관리하는 진화자원 데이터(UC-ADMIN-02)의 헬기·인력·차량 현황입니다. 기본은 「가용만 보기」이며, 끄면 보유·투입·대기까지 모두 표시합니다. 가용 = 투입 + 대기(정비 제외). 자원 수·호출부호는 가상값."></i><span style="flex:1"></span><button class="ibtn" id="lp-close">✕</button></div>
-    <div class="fbody" id="lp-body"></div>
-  </div>
-
-  <div id="legend-panel" class="fpanel"><div class="fhd"><span class="clock">범례</span><span style="flex:1"></span><button class="ibtn" id="lg-close">✕</button></div><div class="fbody" id="lg-body"></div></div>
-
-  <button id="chat-fab" class="commander-only"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/></svg>AI 어시스턴트</button>
-  <div id="coord">—</div>
-</div>
-
-<!-- 전산 관리자 화면 (UC-ADMIN-01 계정·권한 관리 · UC-ADMIN-02 진화자원 데이터 관리) -->
-<div id="admin-screen">
-  <header id="admin-top" style="height:40px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;padding:0 10px">
-    <div class="sys" style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:#1c3f88"><img src="assets/logo.png" alt="" style="width:26px;height:26px;object-fit:contain"><span style="color:#17325e;letter-spacing:.08em;font-size:16px">산림청</span><span style="width:1px;height:18px;background:#cdd3da;margin:0 4px"></span>산불 대응 AI 의사결정 지원 시스템 <span style="font-size:10px;font-weight:400;color:#777;border:1px solid #ccc;padding:0 4px;border-radius:2px">평시 관리</span></div>
-    <div class="sclock" title="서버 현재 시각 (한국표준시)">현재 시각 <b id="admin-clock" class="num">—</b><span class="tz">KST</span></div>
-    <div style="margin-left:auto;font-size:11.5px;color:#444;display:flex;align-items:center;gap:6px"><span id="admin-user">—</span><button id="admin-logout" class="ibtn" title="로그아웃" style="width:24px;height:24px;padding:0;justify-content:center"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 4v16"/></svg></button></div>
-  </header>
-  <div id="admin-body">
-    <div class="abox">
-      <div class="ahd">계정·권한 관리 <span class="uc">UC-ADMIN-01</span><span class="small muted" style="font-weight:400">계정을 발급·회수하고 조작(통합지휘권자)·열람(열람자)·보고(상황 보고자) 권한을 나눕니다. 아이디·초기 비밀번호는 시스템이 만들고, 관리 권한 계정은 설치 시 사전 발급합니다</span></div>
-      <div class="abd" id="admin-accounts"></div>
+    <div id="modal-bg">
+      <div id="modal">
+        <h3 id="modal-title"></h3>
+        <div id="modal-body"></div>
+        <div id="modal-actions"></div>
+      </div>
     </div>
-    <div class="abox">
-      <div class="ahd">진화자원 데이터 관리 <span class="uc">UC-ADMIN-02</span><span class="small muted" style="font-weight:400">보유 헬기·차량·인력을 등록·수정·삭제합니다(필수: 구분·명칭(호출부호)·소속·수량). 통합 상황도의 진화자원 현황과 다음 대응 제안(S3·S6)의 입력이 됩니다</span></div>
-      <div class="abd" id="admin-resources"></div>
-    </div>
-  </div>
-</div>
+    <div id="toast"></div>
 
-<div id="modal-bg"><div id="modal"><h3 id="modal-title"></h3><div id="modal-body"></div><div id="modal-actions"></div></div></div>
-<div id="toast"></div>
-
-<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="data.js"></script>
-<script src="data_boundaries.js"></script>
-<script src="data_osm_lines.js"></script>
-<script src="data_water.js"></script>
-<script src="app.js"></script>
-</body>
+    <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <script src="data.js"></script>
+    <script src="data_boundaries.js"></script>
+    <script src="data_osm_lines.js"></script>
+    <script src="data_water.js"></script>
+    <script src="app.js"></script>
+  </body>
 </html>
