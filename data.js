@@ -198,9 +198,8 @@ window.SCENARIO = {
       official_stage: "초기대응",
       alert_level: "관심",
       perimeters: [],
-      // 종료된 산불: 진행 중에 저장된 산불별 최대 위험도(요인 점수)를 그대로 보여 준다
+      // 종료된 산불의 시연 데이터. 위험도 화면에서는 숫자 대신 종료를 표시한다
       risk_scores: { weather: 3.4, terrain: 3.0, fuel: 3.2, infra: 2.8 },
-      risk_max_at: "2025-03-21T14:00:00+09:00",
       field_report: { expected_suppression_hours: 6 },
       evacuation_state: {
         order_issued: false,

@@ -123,7 +123,7 @@
       runSeq: 0,
       stale: false,
       predPerim: null,
-      riskMax: null,
+      latestRisk: null,
     });
   const canOperate = () => state.role === "commander";
 
@@ -999,21 +999,9 @@
       missing: RM.missing_vars || [],
     };
   }
-  // 산불별 최대 위험도: 진행 중이면 계산해 더 높을 때만 갱신·저장, 종료된 산불은 저장된 값을 그대로 쓴다
+  // 최신 예측에서 저장한 위험도 시연 결과만 조회
   function riskOf(I = inc()) {
-    const st = IS(I.id);
-    if (I.status === "종료") {
-      if (!st.riskMax)
-        st.riskMax = {
-          ...computeRisk(I),
-          at: I.risk_max_at ? new Date(I.risk_max_at) : null,
-        };
-      return { cur: null, max: st.riskMax };
-    }
-    const cur = computeRisk(I);
-    if (!st.riskMax || cur.score > st.riskMax.score)
-      st.riskMax = { ...cur, at: nowSim() };
-    return { cur, max: st.riskMax };
+    return IS(I.id).latestRisk;
   }
 
   // ------------------------------------------------------------------ 아이콘 · 지도
@@ -1850,6 +1838,15 @@
         // 정상 시연 결과의 계산 시각: 기존 예측 완료 시각 사용
         st.riskComputedAt =
           st.riskStatus === "ready" ? new Date(st.predictedAt.getTime()) : null;
+        // 점수가 낮아져도 최신 예측의 시연 결과로 대체
+        st.latestRisk =
+          st.riskStatus === "ready"
+            ? {
+                ...computeRisk(I),
+                predictionId: st.predictionSeq,
+                computedAt: st.riskComputedAt,
+              }
+            : null;
         btn.disabled = false;
         state.predicting = false;
         addEvent(
@@ -2168,8 +2165,7 @@
   `;
       return;
     }
-    const { cur, max } = riskOf(I);
-    const rk = cur || max;
+    const rk = riskOf(I);
 
     const st = IS();
 
@@ -2181,11 +2177,10 @@
 `;
 
     $("#risk-box").innerHTML =
-      `<div class="risk"><div class="gauge"><div class="v">${rk.score.toFixed(2)}</div><div class="k">${cur ? "산불 위험도 R" : "최대 위험도 R"} 1.00~5.00</div></div><div class="fac">${rk.factors.map((f) => `<div class="row"><span title="${esc(f.vars)}">${esc(f.name)}</span><span class="bar"><i style="width:${Math.round((f.score / 5) * 100)}%"></i></span><span class="n">${f.score.toFixed(1)}/5 · 가중치 ${f.weight.toFixed(2)}</span></div>`).join("")}</div></div>
+      `<div class="risk"><div class="gauge"><div class="v">${rk.score.toFixed(2)}</div><div class="k">산불 위험도 R 1.00~5.00</div></div><div class="fac">${rk.factors.map((f) => `<div class="row"><span title="${esc(f.vars)}">${esc(f.name)}</span><span class="bar"><i style="width:${Math.round((f.score / 5) * 100)}%"></i></span><span class="n">${f.score.toFixed(1)}/5 · 가중치 ${f.weight.toFixed(2)}</span></div>`).join("")}</div></div>
       ${riskMeta}
       <div class="sec">요인별 입력 값<i class="info l" data-tip="기상·지형·연료·인프라 요인의 입력 정보를 표시합니다."></i></div>
       <table class="grid">${rk.factors.map((f) => `<tr><td class="k">${esc(f.name)}</td><td class="small">${esc(f.values || f.vars)}</td></tr>`).join("")}</table>
-      ${cur ? `<div class="small" style="margin-top:6px;padding:4px 6px;border:1px solid var(--line2);background:#fafafa">산불별 최대 위험도 <b>${max.score.toFixed(2)}</b> <span class="muted">· ${max.at ? hhmm(max.at) + " 저장" : ""} · 더 높은 점수가 계산되면 갱신되고 종료 후에도 표시됩니다</span></div>` : ""}
       <div class="small muted" style="margin-top:6px">R = 요인 점수의 가중평균 ${rk.mean.toFixed(2)} (1.00~5.00). 현재 목업은 4요인 시연값을 사용합니다.${rk.missing.length ? `<br>결측 변수(제외하고 계산): ${esc(rk.missing.join(", "))}` : ""}</div>`;
   }
 
