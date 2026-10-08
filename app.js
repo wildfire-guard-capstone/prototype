@@ -2133,7 +2133,17 @@
   `;
       return;
     }
-
+    if (!IS().predicted) {
+      $("#risk-box").innerHTML = `
+    <div style="padding:16px 8px">
+      <div>예측 실행 후 표시</div>
+      <div class="small muted" style="margin-top:8px">
+        확산예측 탭에서 예측을 실행하면 위험도를 확인할 수 있습니다.
+      </div>
+    </div>
+  `;
+      return;
+    }
     const { cur, max } = riskOf(I);
     const rk = cur || max;
 
