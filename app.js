@@ -2128,11 +2128,11 @@
         ? `<div class="small" style="margin-bottom:4px"><span class="badge b-종료">종료</span> 저장된 산불별 최대 위험도를 표시합니다${max.at ? `(${ymdhm(max.at)} 저장)` : ""}.</div>`
         : "";
     $("#risk-box").innerHTML =
-      `${head}<div class="risk"><div class="gauge"><div class="v">${rk.score.toFixed(2)}</div><div class="k">${cur ? "현재 조건위험도" : "최대 위험도"} 1.00~5.00</div></div><div class="fac">${rk.factors.map((f) => `<div class="row"><span title="${esc(f.vars)}">${esc(f.name)}</span><span class="bar"><i style="width:${Math.round((f.score / 5) * 100)}%"></i></span><span class="n">${f.score.toFixed(1)}/5 · 가중치 ${f.weight.toFixed(2)}</span></div>`).join("")}</div></div>
-      <div class="sec">요인별 입력 값<i class="info l" data-tip="기상은 기상청 단기예보(발화 지점), 지형·연료·인프라는 공공데이터 격자 값입니다. 지형·연료·인프라 값과 요인 점수는 시연값입니다."></i></div>
+      `${head}<div class="risk"><div class="gauge"><div class="v">${rk.score.toFixed(2)}</div><div class="k">${cur ? "산불 위험도 R" : "최대 위험도 R"} 1.00~5.00</div></div><div class="fac">${rk.factors.map((f) => `<div class="row"><span title="${esc(f.vars)}">${esc(f.name)}</span><span class="bar"><i style="width:${Math.round((f.score / 5) * 100)}%"></i></span><span class="n">${f.score.toFixed(1)}/5 · 가중치 ${f.weight.toFixed(2)}</span></div>`).join("")}</div></div>
+      <div class="sec">요인별 입력 값<i class="info l" data-tip="기상·지형·연료·인프라 요인의 입력 정보를 표시합니다."></i></div>
       <table class="grid">${rk.factors.map((f) => `<tr><td class="k">${esc(f.name)}</td><td class="small">${esc(f.values || f.vars)}</td></tr>`).join("")}</table>
       ${cur ? `<div class="small" style="margin-top:6px;padding:4px 6px;border:1px solid var(--line2);background:#fafafa">산불별 최대 위험도 <b>${max.score.toFixed(2)}</b> <span class="muted">· ${max.at ? hhmm(max.at) + " 저장" : ""} · 더 높은 점수가 계산되면 갱신되고 종료 후에도 표시됩니다</span></div>` : ""}
-      <div class="small muted" style="margin-top:6px">R = 요인 점수의 가중평균 ${rk.mean.toFixed(2)} (1.00~5.00). 현재 목업은 기존 4요인 시연값을 사용하며, 실제 P5 범위의 23변수 계산은 구현하지 않았습니다.${rk.missing.length ? `<br>결측 변수(제외하고 계산): ${esc(rk.missing.join(", "))}` : ""}</div>`;
+      <div class="small muted" style="margin-top:6px">R = 요인 점수의 가중평균 ${rk.mean.toFixed(2)} (1.00~5.00). 현재 목업은 4요인 시연값을 사용합니다.${rk.missing.length ? `<br>결측 변수(제외하고 계산): ${esc(rk.missing.join(", "))}` : ""}</div>`;
   }
 
   // ------------------------------------------------------------------ 렌더링: 진화자원 현황(UC-SIT-03)
