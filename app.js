@@ -1840,6 +1840,11 @@
               at: perim.at,
             }
           : null;
+        // 위험도 결과 상태 시연: 실제 계산 실패 검사가 아님
+        st.riskStatus = S.risk_model.mock_fail_next ? "failed" : "ready";
+
+        // 실패 설정은 한 번 사용한 뒤 해제: 다음 예측에서는 정상 시연
+        S.risk_model.mock_fail_next = false;
         btn.disabled = false;
         state.predicting = false;
         addEvent(
@@ -2139,6 +2144,20 @@
       <div>예측 실행 후 표시</div>
       <div class="small muted" style="margin-top:8px">
         확산예측 탭에서 예측을 실행하면 위험도를 확인할 수 있습니다.
+      </div>
+    </div>
+  `;
+      return;
+    }
+    if (IS().riskStatus === "failed") {
+      $("#risk-box").innerHTML = `
+    <div style="padding:16px 8px">
+      <div><b>위험도 계산 실패</b></div>
+      <div class="small muted" style="margin-top:8px">
+        확산예측 탭에서 다시 예측하면 위험도 계산을 재시도합니다.
+      </div>
+      <div class="small muted" style="margin-top:8px">
+        ※ 계산 실패 상태 시연
       </div>
     </div>
   `;
