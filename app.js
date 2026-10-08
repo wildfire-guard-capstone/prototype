@@ -2121,14 +2121,24 @@
       return;
     }
     const I = inc();
+
+    if (I.status === "종료") {
+      $("#risk-box").innerHTML = `
+    <div style="padding:16px 8px">
+      <span class="badge b-종료">종료</span>
+      <div class="small muted" style="margin-top:8px">
+        종료된 산불은 위험도 숫자를 표시하지 않습니다.
+      </div>
+    </div>
+  `;
+      return;
+    }
+
     const { cur, max } = riskOf(I);
     const rk = cur || max;
-    const head =
-      I.status === "종료"
-        ? `<div class="small" style="margin-bottom:4px"><span class="badge b-종료">종료</span> 저장된 산불별 최대 위험도를 표시합니다${max.at ? `(${ymdhm(max.at)} 저장)` : ""}.</div>`
-        : "";
+
     $("#risk-box").innerHTML =
-      `${head}<div class="risk"><div class="gauge"><div class="v">${rk.score.toFixed(2)}</div><div class="k">${cur ? "산불 위험도 R" : "최대 위험도 R"} 1.00~5.00</div></div><div class="fac">${rk.factors.map((f) => `<div class="row"><span title="${esc(f.vars)}">${esc(f.name)}</span><span class="bar"><i style="width:${Math.round((f.score / 5) * 100)}%"></i></span><span class="n">${f.score.toFixed(1)}/5 · 가중치 ${f.weight.toFixed(2)}</span></div>`).join("")}</div></div>
+      `<div class="risk"><div class="gauge"><div class="v">${rk.score.toFixed(2)}</div><div class="k">${cur ? "산불 위험도 R" : "최대 위험도 R"} 1.00~5.00</div></div><div class="fac">${rk.factors.map((f) => `<div class="row"><span title="${esc(f.vars)}">${esc(f.name)}</span><span class="bar"><i style="width:${Math.round((f.score / 5) * 100)}%"></i></span><span class="n">${f.score.toFixed(1)}/5 · 가중치 ${f.weight.toFixed(2)}</span></div>`).join("")}</div></div>
       <div class="sec">요인별 입력 값<i class="info l" data-tip="기상·지형·연료·인프라 요인의 입력 정보를 표시합니다."></i></div>
       <table class="grid">${rk.factors.map((f) => `<tr><td class="k">${esc(f.name)}</td><td class="small">${esc(f.values || f.vars)}</td></tr>`).join("")}</table>
       ${cur ? `<div class="small" style="margin-top:6px;padding:4px 6px;border:1px solid var(--line2);background:#fafafa">산불별 최대 위험도 <b>${max.score.toFixed(2)}</b> <span class="muted">· ${max.at ? hhmm(max.at) + " 저장" : ""} · 더 높은 점수가 계산되면 갱신되고 종료 후에도 표시됩니다</span></div>` : ""}
