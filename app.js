@@ -1840,11 +1840,16 @@
               at: perim.at,
             }
           : null;
+        // 제안서 버전과 별도로 예측 회차를 기록
+        st.predictionSeq = (st.predictionSeq || 0) + 1;
         // 위험도 결과 상태 시연: 실제 계산 실패 검사가 아님
         st.riskStatus = S.risk_model.mock_fail_next ? "failed" : "ready";
 
         // 실패 설정은 한 번 사용한 뒤 해제: 다음 예측에서는 정상 시연
         S.risk_model.mock_fail_next = false;
+        // 정상 시연 결과의 계산 시각: 기존 예측 완료 시각 사용
+        st.riskComputedAt =
+          st.riskStatus === "ready" ? new Date(st.predictedAt.getTime()) : null;
         btn.disabled = false;
         state.predicting = false;
         addEvent(
@@ -2166,8 +2171,18 @@
     const { cur, max } = riskOf(I);
     const rk = cur || max;
 
+    const st = IS();
+
+    const riskMeta = `
+  <div class="small muted" style="margin:6px 0">
+    기준 예측 ${st.predictionSeq}회
+    · 계산 시각 ${st.riskComputedAt ? ymdhm(st.riskComputedAt) : "미확인"}
+  </div>
+`;
+
     $("#risk-box").innerHTML =
       `<div class="risk"><div class="gauge"><div class="v">${rk.score.toFixed(2)}</div><div class="k">${cur ? "산불 위험도 R" : "최대 위험도 R"} 1.00~5.00</div></div><div class="fac">${rk.factors.map((f) => `<div class="row"><span title="${esc(f.vars)}">${esc(f.name)}</span><span class="bar"><i style="width:${Math.round((f.score / 5) * 100)}%"></i></span><span class="n">${f.score.toFixed(1)}/5 · 가중치 ${f.weight.toFixed(2)}</span></div>`).join("")}</div></div>
+      ${riskMeta}
       <div class="sec">요인별 입력 값<i class="info l" data-tip="기상·지형·연료·인프라 요인의 입력 정보를 표시합니다."></i></div>
       <table class="grid">${rk.factors.map((f) => `<tr><td class="k">${esc(f.name)}</td><td class="small">${esc(f.values || f.vars)}</td></tr>`).join("")}</table>
       ${cur ? `<div class="small" style="margin-top:6px;padding:4px 6px;border:1px solid var(--line2);background:#fafafa">산불별 최대 위험도 <b>${max.score.toFixed(2)}</b> <span class="muted">· ${max.at ? hhmm(max.at) + " 저장" : ""} · 더 높은 점수가 계산되면 갱신되고 종료 후에도 표시됩니다</span></div>` : ""}
