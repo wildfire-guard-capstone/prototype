@@ -2110,8 +2110,53 @@
     $("#ip-stage").innerHTML =
       `<b>${esc(I.official_stage)}</b> · ${esc(I.alert_level)}`;
     // 기상청 단기예보 캐시: 호출에 실패해도 마지막으로 받은 값과 수신 시각을 함께 표시한다(UC-SIT-03 E1)
+    const weatherFailed = S.weather.fetch_status === "failed";
+
     $("#ip-weather").innerHTML =
-      `${esc(wxText(w))}${S.weather.warnings.length ? ` · <b style="color:var(--red)">${esc(S.weather.warnings.join("·"))}</b>` : ""}<br><span class="small muted">${esc(S.weather.source)} ${esc(S.weather.base_time)} 발표 · 수신 ${fmtIso(S.weather.received_at)} · ${esc(w.t)} 기준</span>`;
+      `${esc(wxText(w))}` +
+      (S.weather.warnings.length
+        ? ` · <b style="color:var(--red)">${esc(
+            S.weather.warnings.join("·"),
+          )}</b>`
+        : "") +
+      `<br><span class="small muted">` +
+      `${esc(S.weather.source)} ${esc(S.weather.base_time)} 발표 · ` +
+      `수신 ${fmtIso(S.weather.received_at)} · ${esc(w.t)} 기준` +
+      `</span>` +
+      (weatherFailed
+        ? `
+    <br>
+    <span
+      class="small"
+      style="display:inline-flex;align-items:center;gap:5px;margin-top:4px;color:#8a5700"
+    >
+      <svg
+        aria-hidden="true"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        style="flex-shrink:0"
+      >
+        <path
+          d="M12 3 2 21h20L12 3Z"
+          fill="#fff4ce"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M12 9v5"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+        />
+        <circle cx="12" cy="17" r="1" fill="currentColor" />
+      </svg>
+      <span>기상 갱신 실패 · 마지막 수신값 표시 중</span>
+    </span>
+  `
+        : "");
   }
   // 산불 목록(UC-SIT-02): 기본은 접수·진행 중 목록, 「종료」로 바꾸면 종료 처리된 산불 목록
   function incidentListHTML(mode, selId) {
