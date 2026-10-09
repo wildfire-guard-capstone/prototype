@@ -1840,18 +1840,26 @@
         st.riskComputedAt =
           st.riskStatus === "ready" ? new Date(st.predictedAt.getTime()) : null;
         // 점수가 낮아져도 최신 예측의 시연 결과로 대체
+        // 일반 시연: 사건별 예측 회차에 맞는 결과 선택
         const demoRuns = I.risk_demo_runs || [];
 
-        const normalDemo =
-          demoRuns[Math.min(st.predictionSeq - 1, demoRuns.length - 1)] || null;
+        const demoIndex = Math.min(
+          Math.max(st.predictionSeq - 1, 0),
+          demoRuns.length - 1,
+        );
 
+        const normalDemo = demoRuns[demoIndex] || null;
+
+        // 병합 시연: 설정을 켠 경우에만 공통 결과 사용
         const mergeDemo = S.risk_merge_demo;
 
         const useMergedDemo =
-          mergeDemo?.enabled === true && mergeDemo.mergedIds.includes(I.id);
+          mergeDemo?.enabled === true &&
+          (mergeDemo.mergedIds || []).includes(I.id);
 
         const riskDemo = useMergedDemo ? mergeDemo : normalDemo;
 
+        // 화면과 AI가 함께 읽는 최신 위험도 결과
         st.latestRisk =
           st.riskStatus === "ready"
             ? {
@@ -2576,10 +2584,67 @@
       I = inc(),
       rs = rsView();
     if (/위험도|위험 점수|위험 등급/.test(q)) {
-      const rk = computeRisk();
+      if (I.status === "종료") {
+        botSay("종료된 산불은 위험도 숫자를 표시하지 않습니다.");
+        return;
+      }
+
+      if (!st.predicted) {
+        botSay(
+          "위험도는 예측 실행 후 표시됩니다. 확산예측 탭에서 예측을 실행해 주세요.",
+        );
+        return;
+      }
+
+      if (st.riskStatus === "failed") {
+        botSay(
+          "위험도 계산 실패 상태입니다. 다음 예측을 실행하면 다시 시도합니다.",
+        );
+        return;
+      }
+
+      const rk = st.latestRisk;
+
+      if (!rk) {
+        botSay("현재 표시할 위험도 결과가 없습니다.");
+        return;
+      }
+
+      const factorText = rk.factors
+        .map(
+          (f) =>
+            `${f.name} ${f.score.toFixed(1)}/5` +
+            `(가중치 ${f.weight.toFixed(3)})`,
+        )
+        .join(", ");
+
+      const computedAt = rk.computedAt ? ymdhm(rk.computedAt) : "미확인";
+
+      const mergedIds = rk.mergedIds || [];
+
+      const mergedNames = mergedIds.map((id) => {
+        const target = S.incidents.find((item) => item.id === id);
+        return target ? target.name : id;
+      });
+
+      const mergedText =
+        mergedIds.length > 1
+          ? ` 병합 계산 결과이며, 대상 산불은 ${mergedNames.join(" · ")}입니다.`
+          : "";
+
+      const missingText = rk.missing?.length
+        ? ` 결측 입력: ${rk.missing.join(", ")}.`
+        : "";
+
       botSay(
-        `발화 지점의 조건위험도는 ${rk.score.toFixed(1)}점(${rk.grade})입니다. 요인별 점수는 ${rk.factors.map((f) => `${f.name} ${f.score.toFixed(1)}/5(가중치 ${f.weight.toFixed(2)})`).join(", ")}이며, 25 × (가중평균 ${rk.mean.toFixed(2)} − 1)로 계산했습니다.${rk.missing.length ? ` 결측 변수(${rk.missing.join(", ")})는 제외했습니다.` : ""} 위험도는 매뉴얼 근거가 아닌 시스템 산출값이며, 대응단계 판단은 표준매뉴얼 p.73의 4요소 기준을 따릅니다.`,
+        `산불 위험도 R은 ${rk.score.toFixed(2)}입니다(1.00~5.00). ` +
+          `기준 예측 ${rk.predictionId}회 · 계산 시각 ${computedAt}. ` +
+          `요인별 점수는 ${factorText}입니다.` +
+          mergedText +
+          missingText +
+          " 현재 목업은 4요인 시연값을 사용합니다.",
       );
+
       return;
     }
     if (!run) {
