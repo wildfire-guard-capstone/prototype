@@ -1834,6 +1834,152 @@
       .role-hide {
         display: none !important;
       }
+      /* 화면 크기에 따른 상단·패널 배치 보정 */
+      :root {
+        --app-header-height: 70px;
+      }
+
+      #top1,
+      #top2 {
+        position: relative;
+        z-index: 10;
+      }
+
+      /* 버튼 글자가 한 글자씩 줄바꿈되지 않도록 */
+      #top1 button,
+      #top2 button {
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      #top1 .tog,
+      #top1 .menu,
+      #top1 .user,
+      #top2 .lg {
+        flex-shrink: 0;
+      }
+
+      /* 레이어는 그룹 형태를 유지하고 가로 스크롤 */
+      #top2 {
+        height: 36px;
+        overflow-x: auto;
+        overflow-y: hidden;
+      }
+
+      #stage {
+        height: calc(100dvh - var(--app-header-height));
+      }
+
+      /* 창 안에서 내용이 스크롤되도록 */
+      .fpanel {
+        max-width: calc(100% - 16px);
+      }
+
+      .fpanel .fhd {
+        flex-shrink: 0;
+      }
+
+      .fpanel .fbody {
+        min-height: 0;
+        min-width: 0;
+        overflow: auto;
+      }
+
+      #info-panel,
+      #left-panel,
+      #legend-panel,
+      #rep-panel,
+      #chat-panel {
+        max-height: calc(100% - 60px);
+      }
+
+      #chat-log {
+        min-height: 0;
+      }
+
+      #chat-ctx,
+      #chat-quick,
+      #chat-form {
+        flex-shrink: 0;
+      }
+
+      #chat-input {
+        min-width: 0;
+      }
+
+      .ip-tabs button {
+        min-width: 0;
+        white-space: nowrap;
+      }
+
+      /* 작은 PC 화면: 제목·시각·사용자와 메뉴를 두 줄로 분리 */
+      @media (max-width: 1500px) {
+        #top1 {
+          height: auto;
+          min-height: 72px;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto auto;
+          grid-template-areas:
+            "system clock user"
+            "resources menu menu";
+          gap: 5px 8px;
+          padding: 5px 10px;
+        }
+
+        #top1 .sys {
+          grid-area: system;
+          min-width: 0;
+          white-space: normal;
+          font-size: 13px;
+        }
+
+        #top1 .sclock {
+          grid-area: clock;
+          margin-left: 0;
+        }
+
+        #top1 .user {
+          grid-area: user;
+          margin-left: 0;
+        }
+
+        #top1 .tog {
+          grid-area: resources;
+          margin-left: 0;
+        }
+
+        #top1 .menu {
+          grid-area: menu;
+          justify-self: end;
+          margin-left: 0;
+        }
+      }
+
+      /* 지원 해상도보다 좁은 화면에서도 조작 유지 */
+      @media (max-width: 900px) {
+        #top1 {
+          display: flex;
+          flex-wrap: wrap;
+          height: auto;
+        }
+
+        #top1 .sys {
+          flex: 1 1 100%;
+        }
+
+        #top1 .menu {
+          max-width: 100%;
+          overflow-x: auto;
+          justify-self: auto;
+          margin-left: 0;
+        }
+
+        #info-panel,
+        #chat-panel,
+        #rep-panel {
+          right: 8px;
+        }
+      }
     </style>
   </head>
   <body>

@@ -4298,6 +4298,58 @@
   renderLegend();
   $("#ip-clock").textContent = `${ymd(T0)} ${hhmm(T0)}`;
   document.body.classList.add("satmap");
+  function fitPanelsToStage() {
+    const stage = $("#stage");
+    if (!stage) return;
+
+    $$("#stage .fpanel.on").forEach((panel) => {
+      const stageRect = stage.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+
+      // 이동한 창의 가로 위치를 화면 안으로 보정
+      if (panel.style.left) {
+        const maxLeft = Math.max(8, stage.clientWidth - panel.offsetWidth - 8);
+
+        const left = panelRect.left - stageRect.left;
+
+        panel.style.left = Math.max(8, Math.min(left, maxLeft)) + "px";
+      }
+
+      // 이동한 창의 세로 위치를 화면 안으로 보정
+      if (panel.style.top) {
+        const maxTop = Math.max(8, stage.clientHeight - panel.offsetHeight - 8);
+
+        const top = panelRect.top - stageRect.top;
+
+        panel.style.top = Math.max(8, Math.min(top, maxTop)) + "px";
+      }
+    });
+  }
+
+  function syncAppLayout() {
+    // 실제 상단 높이만큼 지도 영역의 높이 조정
+    const headerHeight =
+      $("#top1").getBoundingClientRect().height +
+      $("#top2").getBoundingClientRect().height;
+
+    document.documentElement.style.setProperty(
+      "--app-header-height",
+      `${headerHeight}px`,
+    );
+
+    requestAnimationFrame(() => {
+      if (map) map.resize();
+      fitPanelsToStage();
+    });
+  }
+
+  const headerResizeObserver = new ResizeObserver(syncAppLayout);
+
+  headerResizeObserver.observe($("#top1"));
+  headerResizeObserver.observe($("#top2"));
+
+  window.addEventListener("resize", syncAppLayout);
+  syncAppLayout();
   window.__mock = {
     state,
     S,
