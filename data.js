@@ -384,6 +384,7 @@ window.SCENARIO = {
   // 다음 확산예측 1회만 실패시키는 개발용 시연 설정
   prediction_demo: {
     mock_fail_next: false,
+    mock_fail_proposal_next: false,
   },
   risk_model: {
     // 등급 실수 경계: 낮음 ≤50 · 보통 50 초과~65 · 높음 65 초과~85 · 매우 높음 85 초과

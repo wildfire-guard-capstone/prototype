@@ -912,27 +912,29 @@
     );
     return c;
   }
-  function generateProposal(reason) {
-    const I = inc(),
-      st = IS();
-    const R = computeRules(I, st.slices),
-      blocks = buildProposal(R, I);
-    st.runSeq++;
+  // 상태를 변경하지 않고 후보 제안만 생성
+  function buildProposalCandidate(I, st, slices, predPerim, reason) {
+    const R = computeRules(I, slices);
+    const blocks = buildProposal(R, I);
+    const seq = st.runSeq + 1;
+
     const run = {
-      id: `버전 ${st.runSeq}`,
-      seq: st.runSeq,
+      id: `버전 ${seq}`,
+      seq,
       createdAt: nowSim(),
       reason,
       R,
       blocks,
       summary: summarize(blocks),
-      perim: st.predPerim,
+      perim: predPerim,
       snapshot: {
         official_stage: I.official_stage,
         alert_level: I.alert_level,
       },
     };
+
     const prev = st.currentRun;
+
     run.changed = prev
       ? blocks
           .filter((b) => {
@@ -946,21 +948,39 @@
           })
           .map((b) => b.id)
       : [];
+
+    return run;
+  }
+
+  // 후보 제안을 확정하고 화면에 반영
+  function generateProposal(reason, preparedRun = null) {
+    const I = inc();
+    const st = IS();
+
+    const run =
+      preparedRun ||
+      buildProposalCandidate(I, st, st.slices, st.predPerim, reason);
+
+    st.runSeq = run.seq;
     st.runs.push(run);
     st.currentRun = run;
     st.viewRun = run;
+
     addEvent(
       "제안",
-      `대응 제안 ${run.id} 생성(${reason})${run.changed.length ? ` · 변경 ${run.changed.length}건` : ""}`,
+      `대응 제안 ${run.id} 생성(${reason})` +
+        (run.changed.length ? ` · 변경 ${run.changed.length}건` : ""),
     );
-    blocks.forEach((b) =>
-      b.withheld.forEach((w) =>
+
+    run.blocks.forEach((b) => {
+      b.withheld.forEach((w) => {
         addEvent(
           "근거 부족",
           `${run.id} ${b.name} — ${w.slot} 비표시(${w.why})`,
-        ),
-      ),
-    );
+        );
+      });
+    });
+
     renderAll();
     return run;
   }
@@ -1793,9 +1813,12 @@
     if (state.predicting) return;
     const shouldFailPrediction = S.prediction_demo?.mock_fail_next === true;
 
-    // 이번 실행에서만 사용하고 다음 실행은 정상으로 복구
+    const shouldFailProposal =
+      S.prediction_demo?.mock_fail_proposal_next === true;
+
     if (S.prediction_demo) {
       S.prediction_demo.mock_fail_next = false;
+      S.prediction_demo.mock_fail_proposal_next = false;
     }
     pause();
     const btn = $("#btn-predict"),
@@ -1835,23 +1858,70 @@
           toast("예측에 실패했습니다. 다시 실행해 주세요.");
           return;
         }
-        state.wind = { ms: wx().wind_ms, dir: wx().wind_dir };
+        // 새 예측은 우선 임시 변수에만 준비
+        const nextWind = {
+          ms: wx().wind_ms,
+          dir: wx().wind_dir,
+        };
+
         const perim = curPerim(I);
-        st.slices = buildSlices(
+
+        const nextSlices = buildSlices(
           I.ignition,
-          state.wind,
+          nextWind,
           perim ? perim.ring : null,
         );
-        st.predicted = true;
-        st.stale = false;
-        st.predictedAt = nowSim();
-        st.predPerim = perim
+
+        const nextPredPerim = perim
           ? {
               version: perim.version,
               area: ringAreaHa(perim.ring),
               at: perim.at,
             }
           : null;
+
+        let preparedRun;
+
+        try {
+          if (shouldFailProposal) {
+            throw new Error("제안 생성 실패 시연");
+          }
+
+          // 새 예측을 확정하기 전에 제안 생성 확인
+          preparedRun = buildProposalCandidate(
+            I,
+            st,
+            nextSlices,
+            nextPredPerim,
+            "예측 갱신",
+          );
+        } catch (error) {
+          state.predicting = false;
+          btn.disabled = false;
+          btn.textContent = st.predicted ? "다시 예측" : "확산 예측 실행";
+
+          bar.style.width = "0%";
+
+          sl.textContent = st.predicted
+            ? "제안 생성에 실패했습니다. 이전 예측·위험도·제안을 유지합니다."
+            : "제안 생성에 실패했습니다. 새 예측을 확정하지 않았습니다.";
+
+          addEvent(
+            "예측",
+            "제안 생성 실패 — 새 예측·위험도·제안을 확정하지 않음",
+          );
+
+          toast("제안 생성에 실패했습니다. 다시 실행해 주세요.");
+          return;
+        }
+
+        // 제안 생성 성공 후 새 예측 상태 반영
+        state.wind = nextWind;
+        st.slices = nextSlices;
+        st.predicted = true;
+        st.stale = false;
+        st.predictedAt = nowSim();
+        st.predPerim = nextPredPerim;
         // 제안서 버전과 별도로 예측 회차를 기록
         st.predictionSeq = (st.predictionSeq || 0) + 1;
         // 위험도 결과 상태 시연: 실제 계산 실패 검사가 아님
@@ -1899,7 +1969,7 @@
           `확산 예측 갱신 — 5h ${fmt0(ringAreaHa(st.slices[4]))} ha, 8h ${fmt0(ringAreaHa(st.slices[7]))} ha, 주 방향 ${dirName(state.wind.dir + 180)} · 기준 실측 화선 ${perimTag(perim)}`,
         );
         setT(0);
-        const run = generateProposal("예측 갱신");
+        const run = generateProposal("예측 갱신", preparedRun);
         toast(`예측이 끝나 진화·대피 대응 제안서를 생성했습니다(${run.id}).`);
         fitAll();
       }
