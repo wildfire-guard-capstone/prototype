@@ -1842,8 +1842,15 @@
         // 점수가 낮아져도 최신 예측의 시연 결과로 대체
         const demoRuns = I.risk_demo_runs || [];
 
-        const riskDemo =
+        const normalDemo =
           demoRuns[Math.min(st.predictionSeq - 1, demoRuns.length - 1)] || null;
+
+        const mergeDemo = S.risk_merge_demo;
+
+        const useMergedDemo =
+          mergeDemo?.enabled === true && mergeDemo.mergedIds.includes(I.id);
+
+        const riskDemo = useMergedDemo ? mergeDemo : normalDemo;
 
         st.latestRisk =
           st.riskStatus === "ready"
@@ -1851,6 +1858,7 @@
                 ...computeRisk(I, riskDemo),
                 predictionId: st.predictionSeq,
                 computedAt: st.riskComputedAt,
+                mergedIds: useMergedDemo ? [...mergeDemo.mergedIds] : [],
               }
             : null;
         btn.disabled = false;
@@ -2172,7 +2180,31 @@
       return;
     }
     const rk = riskOf(I);
+    const mergedIds = rk.mergedIds || [];
 
+    const mergedNames = mergedIds.map((id) => {
+      const target = S.incidents.find((item) => item.id === id);
+      return target ? target.name : id;
+    });
+
+    const mergedInfo =
+      mergedIds.length > 1
+        ? `
+      <div class="sec">
+        병합 계산
+        <i
+          class="info l"
+          data-tip="P5 예측 범위가 겹친 산불을 함께 계산한 결과입니다. 대상 산불에는 같은 위험도 R을 표시합니다."
+        ></i>
+      </div>
+      <div class="small" style="margin-bottom:8px">
+        대상 산불: ${mergedNames.map((name) => esc(name)).join(" · ")}
+      </div>
+      <div class="small muted" style="margin-bottom:12px">
+        현재 목업은 P5가 겹친 상황을 시연합니다.
+      </div>
+    `
+        : "";
     const st = IS();
 
     const riskMeta = `
@@ -2185,6 +2217,7 @@
     $("#risk-box").innerHTML =
       `<div class="risk"><div class="gauge"><div class="v">${rk.score.toFixed(2)}</div><div class="k">산불 위험도 R 1.00~5.00</div></div><div class="fac">${rk.factors.map((f) => `<div class="row"><span title="${esc(f.vars)}">${esc(f.name)}</span><span class="bar"><i style="width:${Math.round((f.score / 5) * 100)}%"></i></span><span class="n">${f.score.toFixed(1)}/5 · 가중치 ${f.weight.toFixed(3)}</span></div>`).join("")}</div></div>
       ${riskMeta}
+      ${mergedInfo}
       <div class="sec">요인별 입력 값<i class="info l" data-tip="기상·지형·연료·인프라 요인의 입력 정보를 표시합니다."></i></div>
       <table class="grid">${rk.factors.map((f) => `<tr><td class="k">${esc(f.name)}</td><td class="small">${esc(f.values || f.vars)}</td></tr>`).join("")}</table>
       <div class="small muted" style="margin-top:6px">R = 요인 점수의 가중평균 ${rk.mean.toFixed(2)} (1.00~5.00). 현재 목업은 4요인 시연값을 사용합니다.${rk.missing.length ? `<br>결측 입력: ${esc(rk.missing.join(", "))}` : ""}</div>`;
