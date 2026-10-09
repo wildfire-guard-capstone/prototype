@@ -1901,9 +1901,45 @@
 
           bar.style.width = "0%";
 
-          sl.textContent = st.predicted
-            ? "제안 생성에 실패했습니다. 이전 예측·위험도·제안을 유지합니다."
-            : "제안 생성에 실패했습니다. 새 예측을 확정하지 않았습니다.";
+          sl.innerHTML = `
+  <span
+    role="status"
+    style="display:inline-flex;align-items:center;gap:5px;color:#8a5700"
+  >
+    <svg
+      aria-hidden="true"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      style="flex-shrink:0"
+    >
+      <path
+        d="M12 3 2 21h20L12 3Z"
+        fill="#fff4ce"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linejoin="round"
+      />
+      <path
+        d="M12 9v5"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+      />
+      <circle cx="12" cy="17" r="1" fill="currentColor" />
+    </svg>
+    <span>제안 생성 실패</span>
+  </span>
+  <br>
+  <span class="small muted">
+    ${
+      st.predicted
+        ? "이전 예측·위험도·제안을 유지합니다. 다시 예측해 주세요."
+        : "새 예측을 확정하지 않았습니다. 다시 예측해 주세요."
+    }
+  </span>
+`;
 
           addEvent(
             "예측",
