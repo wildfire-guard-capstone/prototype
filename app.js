@@ -98,7 +98,6 @@
     markers: {},
     emdLabels: [],
     crewMarkers: [],
-    tokenExp: null,
     rep: {
       editingId: null,
       pickMode: false,
@@ -3924,10 +3923,9 @@
       $("#login-pw").value = acc.pw || "";
     }
   }
-  // SER-001: 잠금 여부를 먼저 확인하고, 5회 연속 실패하면 잠금(전산 관리자만 해제).
-  // 로그인하면 권한을 담은 세션 토큰(JWT 대응, 만료 30분)을 발급하고, 토큰이 유효한 동안은 새로고침해도 바로 진입한다(A1)
+  // 로그인 세션을 탭에 저장하고 새로고침 시 복원한다.
+  // 발표용 목업에는 시간에 따른 자동 만료를 적용하지 않는다.
   const LOCK_AFTER = 5,
-    TOKEN_MS = 30 * 60 * 1000,
     TOKEN_KEY = "wf-mock-token";
   const LOCK_MSG = "계정이 잠겼습니다. 전산 관리자에게 문의하십시오.";
   const saveToken = () => {
@@ -3937,7 +3935,6 @@
         JSON.stringify({
           user: state.user,
           role: state.role,
-          exp: state.tokenExp,
         }),
       );
     } catch (e) {
@@ -3990,7 +3987,7 @@
       fail("회수된 계정입니다. 전산 관리자에게 문의하십시오.");
       return;
     }
-    enterSession(acc, Date.now() + TOKEN_MS);
+    enterSession(acc);
     addEvent("시스템", `${acc.id} 로그인(${ROLE_LABEL[acc.role]})`);
     if (state.role === "reporter")
       toast(
@@ -4004,12 +4001,11 @@
       );
   }
   // 권한별 첫 화면: 통합지휘권자·열람자 = 진행 중 산불의 통합 상황도, 상황 보고자 = 상황 입력 화면, 전산 관리자 = 계정·진화자원 데이터 관리
-  function enterSession(acc, exp) {
+  function enterSession(acc) {
     acc.failed = 0;
     state.user = acc.id;
     state.role = acc.role;
     state.loginAt = state.loginAt || Date.now();
-    state.tokenExp = exp;
     saveToken();
     $("#login-overlay").style.display = "none";
     $("#chat-log").innerHTML = "";
@@ -4034,7 +4030,7 @@
     } catch (e) {
       t = null;
     }
-    if (!t || !t.exp || t.exp <= Date.now()) {
+    if (!t || !t.user) {
       clearToken();
       return;
     }
@@ -4043,7 +4039,7 @@
       clearToken();
       return;
     }
-    enterSession(acc, t.exp);
+    enterSession(acc);
     toast("유효한 세션 토큰이 있어 로그인 없이 진입했습니다.", 3000);
   }
   // A2: 로그아웃하면 세션 토큰을 폐기하고 로그인 화면으로 돌아간다
@@ -4057,7 +4053,6 @@
         : `${state.user} 로그아웃`,
     );
     clearToken();
-    state.tokenExp = null;
     state.role = null;
     $("#admin-screen").classList.remove("on");
     $("#login-overlay").style.display = "";
@@ -4067,10 +4062,6 @@
         `${reason}으로 로그아웃되었습니다. 다시 로그인하십시오.`;
       toast(`${reason}으로 로그아웃되었습니다.`, 4000);
     }
-  }
-  function checkToken() {
-    if (state.role && state.tokenExp && Date.now() >= state.tokenExp)
-      logout("세션 만료(30분)");
   }
   function renderAll() {
     if (!state.role || state.role === "admin") return;
@@ -4264,7 +4255,6 @@
       "#chat-panel",
       "#rep-panel",
     ].forEach((id) => makeDraggable($(id)));
-    setInterval(checkToken, 15000);
   }
 
   // 마커 스타일 (위성영상 위 가독성: 흰 라벨)
@@ -4366,8 +4356,6 @@
     IS,
     inc,
     events: state.events,
-    checkToken,
-    TOKEN_MS,
   };
   resumeSession();
 })();
