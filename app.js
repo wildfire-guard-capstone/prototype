@@ -997,7 +997,7 @@
         ...f,
         contrib: Math.round(((f.score * f.weight) / wsum) * 100) / 100,
       })),
-      missing: RM.missing_vars || [],
+      missing: demo?.missing_vars ?? RM.missing_vars ?? [],
     };
   }
   // 최신 예측에서 저장한 위험도 시연 결과만 조회
@@ -2187,7 +2187,7 @@
       ${riskMeta}
       <div class="sec">요인별 입력 값<i class="info l" data-tip="기상·지형·연료·인프라 요인의 입력 정보를 표시합니다."></i></div>
       <table class="grid">${rk.factors.map((f) => `<tr><td class="k">${esc(f.name)}</td><td class="small">${esc(f.values || f.vars)}</td></tr>`).join("")}</table>
-      <div class="small muted" style="margin-top:6px">R = 요인 점수의 가중평균 ${rk.mean.toFixed(2)} (1.00~5.00). 현재 목업은 4요인 시연값을 사용합니다.${rk.missing.length ? `<br>결측 변수(제외하고 계산): ${esc(rk.missing.join(", "))}` : ""}</div>`;
+      <div class="small muted" style="margin-top:6px">R = 요인 점수의 가중평균 ${rk.mean.toFixed(2)} (1.00~5.00). 현재 목업은 4요인 시연값을 사용합니다.${rk.missing.length ? `<br>결측 입력: ${esc(rk.missing.join(", "))}` : ""}</div>`;
   }
 
   // ------------------------------------------------------------------ 렌더링: 진화자원 현황(UC-SIT-03)

@@ -78,6 +78,7 @@ window.SCENARIO = {
       // P5 기준 위험도 화면 비교용 시연 데이터
       risk_demo_runs: [
         {
+          missing_vars: [],
           scores: {
             weather: 4.2,
             terrain: 3.6,
@@ -93,6 +94,7 @@ window.SCENARIO = {
           },
         },
         {
+          missing_vars: [],
           scores: {
             weather: 4.5,
             terrain: 3.8,
@@ -407,7 +409,7 @@ window.SCENARIO = {
           "취약계층 120명(65세 이상 100명·0~14세 20명) · 최근 화선 기준 가장 가까운 소방서까지 거리 3.2 km",
       },
     ],
-    missing_vars: ["인프라 · 변전소 거리(한전 자료 미확보)"],
+    missing_vars: [],
     note: "기상 값은 기상청 단기예보 캐시, 지형·연료·인프라 값과 요인 점수는 시연값. 시연값 4.2·3.6·3.9·2.4 → 69.1(높음).",
   },
 
