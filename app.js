@@ -2313,10 +2313,45 @@
     if (IS().riskStatus === "failed") {
       $("#risk-box").innerHTML = `
     <div style="padding:16px 8px">
-      <div><b>위험도 계산 실패</b></div>
+      <div
+        role="status"
+        style="display:flex;align-items:center;gap:5px;color:#8a5700"
+      >
+        <svg
+          aria-hidden="true"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          style="flex-shrink:0"
+        >
+          <path
+            d="M12 3 2 21h20L12 3Z"
+            fill="#fff4ce"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M12 9v5"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <circle
+            cx="12"
+            cy="17"
+            r="1"
+            fill="currentColor"
+          />
+        </svg>
+        <span>위험도 계산 실패</span>
+      </div>
+
       <div class="small muted" style="margin-top:8px">
         확산예측 탭에서 다시 예측하면 위험도 계산을 재시도합니다.
       </div>
+
       <div class="small muted" style="margin-top:8px">
         ※ 계산 실패 상태 시연
       </div>
