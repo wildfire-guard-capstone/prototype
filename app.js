@@ -974,16 +974,17 @@
   const wx = () => S.weather.series[0];
   const wxText = (w = wx()) =>
     `${dirName(w.wind_dir)}풍 ${w.wind_ms} m/s · 습도 ${w.rh}% · 기온 ${w.temp_c}℃ · 시정 ${w.vis_m >= 1000 ? fmt1(w.vis_m / 1000) + " km" : w.vis_m + " m"}`;
-  function computeRisk(I = inc()) {
+  function computeRisk(I = inc(), demo = null) {
     const RM = S.risk_model,
-      sc = I.risk_scores || {};
+      sc = demo?.scores || I.risk_scores || {};
     const fs = RM.factors.map((f) => ({
       ...f,
       score: sc[f.key] != null ? sc[f.key] : f.score,
       values:
-        f.key === "weather"
+        demo?.values?.[f.key] ??
+        (f.key === "weather"
           ? `풍속 ${wx().wind_ms} m/s · 풍향 ${wx().wind_dir}° · 습도 ${wx().rh}% · 기온 ${wx().temp_c}℃ · ${S.weather.warnings.join("·")}`
-          : f.values,
+          : f.values),
     }));
     const wsum = fs.reduce((a, f) => a + f.weight, 0);
     const mean = fs.reduce((a, f) => a + f.score * f.weight, 0) / wsum;
@@ -1839,10 +1840,15 @@
         st.riskComputedAt =
           st.riskStatus === "ready" ? new Date(st.predictedAt.getTime()) : null;
         // 점수가 낮아져도 최신 예측의 시연 결과로 대체
+        const demoRuns = I.risk_demo_runs || [];
+
+        const riskDemo =
+          demoRuns[Math.min(st.predictionSeq - 1, demoRuns.length - 1)] || null;
+
         st.latestRisk =
           st.riskStatus === "ready"
             ? {
-                ...computeRisk(I),
+                ...computeRisk(I, riskDemo),
                 predictionId: st.predictionSeq,
                 computedAt: st.riskComputedAt,
               }
