@@ -4340,6 +4340,159 @@
 
   window.addEventListener("resize", syncAppLayout);
   syncAppLayout();
+  function setupTooltips() {
+    const tip = document.createElement("div");
+    tip.id = "app-tooltip";
+    tip.setAttribute("role", "tooltip");
+    tip.hidden = true;
+    document.body.appendChild(tip);
+
+    let active = null;
+    let pinned = false;
+
+    function closeTip() {
+      if (active) active.removeAttribute("aria-describedby");
+      active = null;
+      pinned = false;
+      tip.hidden = true;
+    }
+
+    function openTip(icon, pin = false) {
+      if (active && active !== icon) {
+        active.removeAttribute("aria-describedby");
+      }
+
+      active = icon;
+      pinned = pin;
+      tip.textContent = icon.dataset.tip;
+      tip.hidden = false;
+      icon.setAttribute("aria-describedby", tip.id);
+
+      const rect = icon.getBoundingClientRect();
+      const width = tip.offsetWidth;
+      const height = tip.offsetHeight;
+      const margin = 12;
+      const gap = 8;
+
+      const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+
+      const left = Math.max(
+        margin,
+        Math.min(rect.left + rect.width / 2 - width / 2, maxLeft),
+      );
+
+      let top = icon.classList.contains("b")
+        ? rect.bottom + gap
+        : rect.top - height - gap;
+
+      if (top < margin) {
+        top = rect.bottom + gap;
+      }
+
+      const maxTop = Math.max(margin, window.innerHeight - height - margin);
+
+      top = Math.max(margin, Math.min(top, maxTop));
+
+      tip.style.left = `${left}px`;
+      tip.style.top = `${top}px`;
+    }
+
+    // 동적으로 추가되는 아이콘도 키보드로 조작 가능하게 설정
+    function prepareIcons() {
+      document.querySelectorAll(".info[data-tip]").forEach((icon) => {
+        if (!icon.hasAttribute("tabindex")) {
+          icon.tabIndex = 0;
+          icon.setAttribute("role", "button");
+          icon.setAttribute("aria-label", "도움말");
+        }
+      });
+    }
+
+    prepareIcons();
+
+    const observer = new MutationObserver(prepareIcons);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    document.addEventListener("pointerover", (event) => {
+      const icon = event.target.closest(".info[data-tip]");
+      if (icon && !pinned) openTip(icon);
+    });
+
+    document.addEventListener("pointerout", (event) => {
+      if (pinned || !active) return;
+
+      const next = event.relatedTarget;
+
+      if (next && (active.contains(next) || tip.contains(next))) {
+        return;
+      }
+
+      if (active.contains(event.target) || tip.contains(event.target)) {
+        closeTip();
+      }
+    });
+
+    document.addEventListener("click", (event) => {
+      const icon = event.target.closest(".info[data-tip]");
+
+      if (icon) {
+        if (active === icon && pinned) closeTip();
+        else openTip(icon, true);
+      } else if (!tip.contains(event.target)) {
+        closeTip();
+      }
+    });
+
+    document.addEventListener("focusin", (event) => {
+      const icon = event.target.closest(".info[data-tip]");
+      if (icon && !pinned) openTip(icon);
+    });
+
+    document.addEventListener("focusout", (event) => {
+      if (!pinned && event.target === active) closeTip();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeTip();
+        return;
+      }
+
+      const icon = event.target.closest(".info[data-tip]");
+
+      if (icon && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+
+        if (active === icon && pinned) closeTip();
+        else openTip(icon, true);
+      }
+    });
+
+    // 패널 이동·스크롤 후 이전 위치에 남지 않도록 닫기
+    document.addEventListener("pointerdown", (event) => {
+      if (
+        !event.target.closest(".info[data-tip]") &&
+        !tip.contains(event.target)
+      ) {
+        closeTip();
+      }
+    });
+
+    document.addEventListener(
+      "scroll",
+      (event) => {
+        if (event.target !== tip) closeTip();
+      },
+      true,
+    );
+
+    window.addEventListener("resize", closeTip);
+  }
+
+  setupTooltips();
   window.__mock = {
     state,
     S,

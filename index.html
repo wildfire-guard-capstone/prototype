@@ -1980,6 +1980,35 @@
           right: 8px;
         }
       }
+      /* 기존 아이콘 내부 툴팁 대신 공통 툴팁 사용 */
+      .info::after {
+        display: none;
+      }
+
+      #app-tooltip {
+        position: fixed;
+        z-index: 1000;
+        width: max-content;
+        max-width: min(360px, calc(100vw - 24px));
+        max-height: calc(100dvh - 24px);
+        overflow: auto;
+        padding: 8px 10px;
+        border: 1px solid #c9b76b;
+        border-radius: 3px;
+        background: #fffbe6;
+        color: #333;
+        font-size: 11px;
+        font-weight: 400;
+        line-height: 1.55;
+        text-align: left;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+      }
+
+      #app-tooltip[hidden] {
+        display: none;
+      }
     </style>
   </head>
   <body>
