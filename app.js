@@ -2525,6 +2525,7 @@
       botSay(
         "현재 상황·대응 제안·근거를 질문하거나 빠른 질문을 누르십시오. 현장에서 바뀐 사실(예: 박곡리 대피 완료, 헬기 6대 투입)은 「상황 정정」으로 입력하면 확인 후 저장하고 제안서를 다시 만듭니다. 답변은 검색된 표준매뉴얼 근거 안에서만 하며, 근거가 부족한 내용은 표시하지 않고 이벤트 로그에 기록합니다.",
       );
+    updateChatBusy();
   }
   function addMsg(cls, html) {
     const d = document.createElement("div");
@@ -2534,49 +2535,128 @@
     $("#chat-log").scrollTop = 1e6;
     return d;
   }
+  let chatPending = false;
+  let chatTypingCount = 0;
+
+  function updateChatBusy() {
+    const busy = chatPending || chatTypingCount > 0;
+
+    const sendButton = $("#btn-chat-send");
+    const input = $("#chat-input");
+    const correctionButton = $("#btn-corr");
+    const status = $("#chat-status");
+
+    if (sendButton) {
+      sendButton.disabled = busy;
+      sendButton.textContent = "전송";
+    }
+
+    if (input) {
+      if (busy) {
+        // 생성이 시작될 때 기존 안내 문구를 보관
+        if (input.dataset.idlePlaceholder === undefined) {
+          input.dataset.idlePlaceholder = input.placeholder;
+        }
+
+        input.placeholder = "답변 생성 중…";
+      } else if (input.dataset.idlePlaceholder !== undefined) {
+        input.placeholder = input.dataset.idlePlaceholder;
+        delete input.dataset.idlePlaceholder;
+      }
+
+      input.disabled = busy;
+      input.setAttribute("aria-busy", String(busy));
+    }
+
+    if (correctionButton) {
+      correctionButton.disabled = busy;
+    }
+
+    if (status) {
+      const message = busy ? "답변 생성 중" : "";
+
+      if (status.textContent !== message) {
+        status.textContent = message;
+      }
+    }
+
+    $$("#chat-quick button").forEach((button) => {
+      button.disabled = busy;
+    });
+  }
   function botSay(text, blockId) {
+    chatTypingCount += 1;
+    updateChatBusy();
+
     const d = addMsg("bot", "");
     let i = 0;
+
     const html = blockId ? citeHTML(text, blockId) : esc(text);
+
     const iv = setInterval(() => {
       i += 3;
       d.textContent = text.slice(0, i);
       $("#chat-log").scrollTop = 1e6;
+
       if (i >= text.length) {
         clearInterval(iv);
-        d.innerHTML = html;
-        d.querySelectorAll(".cite").forEach((c) =>
-          c.addEventListener("click", () => {
-            showTab("proposal");
-            focusCard(c.dataset.b, true);
-            openEvidence(IS().viewRun, c.dataset.b, Number(c.dataset.k));
-          }),
-        );
+
+        try {
+          d.innerHTML = html;
+
+          d.querySelectorAll(".cite").forEach((c) => {
+            c.addEventListener("click", () => {
+              showTab("proposal");
+              focusCard(c.dataset.b, true);
+              openEvidence(IS().viewRun, c.dataset.b, Number(c.dataset.k));
+            });
+          });
+        } finally {
+          chatTypingCount -= 1;
+          updateChatBusy();
+        }
       }
     }, 12);
   }
   function sendChat() {
+    // Enter나 빠른 질문으로도 중복 전송되지 않도록 차단
+    if (chatPending || chatTypingCount > 0) return;
+
     const q = $("#chat-input").value.trim();
     if (!q) return;
+
+    const correctionMode = state.corrMode;
+
     $("#chat-input").value = "";
     addMsg("user", esc(q));
-    const corr = detectCorrection(q);
-    // 질의/정정 구분(classify): 상황 변화 보고로 판별되면 바로 반영하지 않고 정정 확인 카드로 넘긴다(UC-QA-01 E2 → UC-QA-02)
-    if (corr) {
-      setTimeout(() => proposeCorrection(corr, q), 300);
-      return;
-    }
-    if (state.corrMode) {
-      setTimeout(
-        () =>
+
+    chatPending = true;
+    updateChatBusy();
+
+    setTimeout(() => {
+      try {
+        const corr = detectCorrection(q);
+
+        if (corr) {
+          proposeCorrection(corr, q);
+          return;
+        }
+
+        if (correctionMode) {
           botSay(
-            "입력에서 정정할 대상(마을명·자원 종류 등)이나 바뀐 값을 해석하지 못했습니다. 대상을 다시 입력해 주십시오. 예: 박곡리 대피 완료, 헬기 6대 투입, 예상 진화시간 12시간.",
-          ),
-        300,
-      );
-      return;
-    }
-    setTimeout(() => answer(q), 350);
+            "입력에서 정정할 대상(마을명·자원 종류 등)이나 바뀐 값을 해석하지 못했습니다. " +
+              "대상을 다시 입력해 주십시오. " +
+              "예: 박곡리 대피 완료, 헬기 6대 투입, 예상 진화시간 12시간.",
+          );
+          return;
+        }
+
+        answer(q);
+      } finally {
+        chatPending = false;
+        updateChatBusy();
+      }
+    }, 350);
   }
   function answer(q) {
     const st = IS(),
