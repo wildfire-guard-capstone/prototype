@@ -1791,6 +1791,12 @@
       return;
     }
     if (state.predicting) return;
+    const shouldFailPrediction = S.prediction_demo?.mock_fail_next === true;
+
+    // 이번 실행에서만 사용하고 다음 실행은 정상으로 복구
+    if (S.prediction_demo) {
+      S.prediction_demo.mock_fail_next = false;
+    }
     pause();
     const btn = $("#btn-predict"),
       bar = $("#predict-progress"),
@@ -1812,6 +1818,23 @@
         steps[Math.min(steps.length - 1, Math.floor(p / 21))] + "…";
       if (p < 100) setTimeout(tick, 180);
       else {
+        if (shouldFailPrediction) {
+          // 새 결과를 저장하지 않아 이전 결과를 그대로 유지
+          state.predicting = false;
+          btn.disabled = false;
+          btn.textContent = st.predicted ? "다시 예측" : "확산 예측 실행";
+
+          bar.style.width = "0%";
+
+          sl.textContent = st.predicted
+            ? "예측에 실패했습니다. 이전 결과를 유지합니다. 다시 예측해 주세요."
+            : "예측에 실패했습니다. 다시 실행해 주세요.";
+
+          addEvent("예측", "확산예측 실패 시연 — 새 결과를 저장하지 않음");
+
+          toast("예측에 실패했습니다. 다시 실행해 주세요.");
+          return;
+        }
         state.wind = { ms: wx().wind_ms, dir: wx().wind_dir };
         const perim = curPerim(I);
         st.slices = buildSlices(
