@@ -1716,18 +1716,15 @@
     if (showPred) S.shelters.forEach((s) => b.extend([s.lng, s.lat]));
     const w = map.getContainer().clientWidth,
       h = map.getContainer().clientHeight;
-    const rightOpen =
-        $("#info-panel").classList.contains("on") ||
-        $("#rep-panel").classList.contains("on"),
-      leftOpen = $("#left-panel").classList.contains("on");
+    const leftOpen = $("#left-panel").classList.contains("on");
     map.fitBounds(b, {
       padding:
-        w > 1000 && h > 600
+        w > 700 && h > 500
           ? {
-              top: 70,
-              bottom: 60,
+              top: 60,
+              bottom: 50,
               left: leftOpen ? 350 : 40,
-              right: rightOpen ? 490 : 80,
+              right: 100,
             }
           : 30,
       maxZoom: 13.5,
@@ -1758,7 +1755,6 @@
         : st.predicted
           ? `${hhmm(d)}<small>t0+${st.t}h${isNight(d) ? " · 야간" : ""}</small>`
           : `${hhmm(T0)}<small>예측 전</small>`;
-    $("#ip-clock").textContent = `${ymd(d)} ${hhmm(d)}`;
     updateFireLayers();
   }
   function play() {
@@ -1820,41 +1816,23 @@
       S.prediction_demo.mock_fail_proposal_next = false;
     }
     pause();
-    const btn = $("#btn-predict"),
-      bar = $("#predict-progress"),
-      sl = $("#predict-status");
-    btn.disabled = true;
+    const btn = $("#btn-predict");
     state.predicting = true;
+    st.predictFailed = false;
+    renderPredBar();
     let p = 0;
-    const steps = [
-      "입력 검증(발화점·실측 화선·t0)",
-      "기상청 단기예보 조회",
-      "확산 모델 실행",
-      "P1~P8 누적성 검증",
-      "규칙 판정·제안 생성",
-    ];
     const tick = () => {
       p += 9;
-      bar.style.width = Math.min(100, p) + "%";
-      sl.textContent =
-        steps[Math.min(steps.length - 1, Math.floor(p / 21))] + "…";
+      btn.textContent = `예측 중 ${Math.min(100, p)}%`;
       if (p < 100) setTimeout(tick, 180);
       else {
         if (shouldFailPrediction) {
           // 새 결과를 저장하지 않아 이전 결과를 그대로 유지
           state.predicting = false;
-          btn.disabled = false;
-          btn.textContent = st.predicted ? "다시 예측" : "확산 예측 실행";
-
-          bar.style.width = "0%";
-
-          sl.textContent = st.predicted
-            ? "예측에 실패했습니다. 이전 결과를 유지합니다. 다시 예측해 주세요."
-            : "예측에 실패했습니다. 다시 실행해 주세요.";
-
-          addEvent("예측", "확산예측 실패 시연 — 새 결과를 저장하지 않음");
-
-          toast("예측에 실패했습니다. 다시 실행해 주세요.");
+          st.predictFailed = true;
+          addEvent("예측", "확산 예측 실패 — 새 결과를 저장하지 않음");
+          failNotice("확산 예측 정보를 가져오지 못했습니다.");
+          renderPredBar();
           return;
         }
         // 새 예측은 우선 임시 변수에만 준비
@@ -1895,58 +1873,15 @@
             "예측 갱신",
           );
         } catch (error) {
+          // 새 예측·위험도·제안을 확정하지 않고 이전 결과를 유지
           state.predicting = false;
-          btn.disabled = false;
-          btn.textContent = st.predicted ? "다시 예측" : "확산 예측 실행";
-
-          bar.style.width = "0%";
-
-          sl.innerHTML = `
-  <span
-    role="status"
-    style="display:inline-flex;align-items:center;gap:5px;color:#8a5700"
-  >
-    <svg
-      aria-hidden="true"
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      style="flex-shrink:0"
-    >
-      <path
-        d="M12 3 2 21h20L12 3Z"
-        fill="#fff4ce"
-        stroke="currentColor"
-        stroke-width="1.8"
-        stroke-linejoin="round"
-      />
-      <path
-        d="M12 9v5"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-      />
-      <circle cx="12" cy="17" r="1" fill="currentColor" />
-    </svg>
-    <span>제안 생성 실패</span>
-  </span>
-  <br>
-  <span class="small muted">
-    ${
-      st.predicted
-        ? "이전 예측·위험도·제안을 유지합니다. 다시 예측해 주세요."
-        : "새 예측을 확정하지 않았습니다. 다시 예측해 주세요."
-    }
-  </span>
-`;
-
+          st.proposalFailed = true;
           addEvent(
             "예측",
-            "제안 생성 실패 — 새 예측·위험도·제안을 확정하지 않음",
+            "대응 제안 생성 실패 — 새 예측·위험도·제안을 확정하지 않음",
           );
-
-          toast("제안 생성에 실패했습니다. 다시 실행해 주세요.");
+          failNotice("대응 제안 정보를 가져오지 못했습니다.");
+          renderAll();
           return;
         }
 
@@ -1997,7 +1932,7 @@
                 mergedIds: useMergedDemo ? [...mergeDemo.mergedIds] : [],
               }
             : null;
-        btn.disabled = false;
+        st.proposalFailed = false;
         state.predicting = false;
         addEvent(
           "예측",
@@ -2024,6 +1959,11 @@
     });
     renderHistory();
   }
+  // 못 가져온 정보: 칸 안에 경고 아이콘과 함께 표시
+  const WARN_SVG = `<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex-shrink:0"><path d="M12 3 2 21h20L12 3Z" fill="#fff4ce" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 9v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>`;
+  const warnHTML = (text) =>
+    `<span class="warn" role="status">${WARN_SVG}<span>${esc(text)}</span></span>`;
+  const failNotice = (msg) => toast(msg, 4000);
   function toast(msg, ms = 2600) {
     const t = $("#toast");
     t.textContent = msg;
@@ -2056,36 +1996,28 @@
   function showPanel(id, on) {
     const p = $(id);
     p.classList.toggle("on", on == null ? !p.classList.contains("on") : on);
-    syncVtabs();
   }
-  function syncVtabs() {
-    $$(".vtab").forEach((v) =>
-      v.classList.toggle(
-        "on",
-        $(
-          {
-            fire: state.role === "reporter" ? "#rep-panel" : "#info-panel",
-            legend: "#legend-panel",
-          }[v.dataset.v],
-        ).classList.contains("on"),
-      ),
-    );
-  }
-  const COMMANDER_TABS = ["risk", "proposal", "history"];
+  // 왼쪽 고정 창 탭: 산불현황 · 대응제안(통합지휘권자)
   function showTab(tab) {
-    if (state.role === "reporter") {
-      showPanel("#rep-panel", true);
-      return;
-    }
-    if (!canOperate() && COMMANDER_TABS.includes(tab)) tab = "status";
-    showPanel("#info-panel", true);
+    if (state.role === "reporter") return;
+    if (tab !== "status" && !canOperate()) tab = "status";
+    if (tab !== "status") tab = "proposal";
     $$(".ip-tab").forEach((b) =>
       b.classList.toggle("on", b.dataset.tab === tab),
     );
     $$(".ipt").forEach((p) => p.classList.toggle("on", p.id === `ipt-${tab}`));
-    $$(".menu-btn").forEach((b) =>
-      b.classList.toggle("on", b.dataset.menu === tab),
-    );
+  }
+  // 산불 날개: 왼쪽 고정 창 위에 산불 목록을 펼친다
+  function toggleIncDrawer(on) {
+    const d = $("#inc-drawer");
+    const open = on == null ? !d.classList.contains("on") : on;
+    d.classList.toggle("on", open);
+    $("#wing-fire").classList.toggle("on", open);
+    if (open) renderIncList();
+  }
+  function toggleLogPanel(on) {
+    showPanel("#log-panel", on);
+    $("#btn-log").classList.toggle("on", $("#log-panel").classList.contains("on"));
   }
   function openChatPopup() {
     if (!canOperate()) {
@@ -2133,65 +2065,24 @@
   const fmtIso = (s) => (s ? ymdhm(new Date(s)) : "—");
   const fmtHM = (s) => (s ? hhmm(new Date(s)) : "—");
   function renderHeader() {
-    const I = inc(),
-      w = wx();
+    const I = inc();
     $("#hdr-user").innerHTML =
       `<b>${esc(state.user)}</b> · ${ROLE_LABEL[state.role] || ""}(${PERM_LABEL[state.role] || ""})`;
-    $("#ip-name").textContent = `| ${I.name}`;
-    $("#ip-addr").textContent = I.addr;
-    $("#ip-report").textContent = `${fmtHM(I.report_time)} ${I.report_text}`;
-    $("#ip-status").innerHTML =
-      `${stBadge(I.status)} <span class="muted small">접수 ${fmtIso(I.report_time)}</span>`;
-    $("#ip-stage").innerHTML =
-      `<b>${esc(I.official_stage)}</b> · ${esc(I.alert_level)}`;
-    // 기상청 단기예보 캐시: 호출에 실패해도 마지막으로 받은 값과 수신 시각을 함께 표시한다(UC-SIT-03 E1)
-    const weatherFailed = S.weather.fetch_status === "failed";
-
-    $("#ip-weather").innerHTML =
+    $("#ip-name").textContent = I.name;
+    $("#ip-badge").innerHTML = stBadge(I.status);
+  }
+  // 기상청 단기예보 캐시: 호출에 실패해도 마지막으로 받은 값과 수신 시각을 함께 표시한다(UC-SIT-03 E1)
+  function weatherHTML() {
+    const w = wx();
+    const value =
       `${esc(wxText(w))}` +
       (S.weather.warnings.length
-        ? ` · <b style="color:var(--red)">${esc(
-            S.weather.warnings.join("·"),
-          )}</b>`
+        ? ` · <b style="color:var(--red)">${esc(S.weather.warnings.join("·"))}</b>`
         : "") +
-      `<br><span class="small muted">` +
-      `${esc(S.weather.source)} ${esc(S.weather.base_time)} 발표 · ` +
-      `수신 ${fmtIso(S.weather.received_at)} · ${esc(w.t)} 기준` +
-      `</span>` +
-      (weatherFailed
-        ? `
-    <br>
-    <span
-      class="small"
-      style="display:inline-flex;align-items:center;gap:5px;margin-top:4px;color:#8a5700"
-    >
-      <svg
-        aria-hidden="true"
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        style="flex-shrink:0"
-      >
-        <path
-          d="M12 3 2 21h20L12 3Z"
-          fill="#fff4ce"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linejoin="round"
-        />
-        <path
-          d="M12 9v5"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-        />
-        <circle cx="12" cy="17" r="1" fill="currentColor" />
-      </svg>
-      <span>기상 갱신 실패 · 마지막 수신값 표시 중</span>
-    </span>
-  `
-        : "");
+      `<br><span class="small muted">${esc(S.weather.source)} ${esc(S.weather.base_time)} 발표 · 수신 ${fmtIso(S.weather.received_at)} · ${esc(w.t)} 기준</span>`;
+    return S.weather.fetch_status === "failed"
+      ? `${warnHTML("기상 정보를 가져오지 못했습니다")}<div class="stale">${value}</div>`
+      : value;
   }
   // 산불 목록(UC-SIT-02): 기본은 접수·진행 중 목록, 「종료」로 바꾸면 종료 처리된 산불 목록
   function incidentListHTML(mode, selId) {
@@ -2224,27 +2115,39 @@
       ? `<b>${perimTag(p)}</b> · ${fmt1(ringAreaHa(p.ring))} ha · 꼭짓점 ${p.ring.length - 1}개 <span class="small muted">(${fmtIso(p.at)} ${esc(p.by || "")} ${esc(p.source || "")}${n > 1 ? ` · 이전 버전 ${n - 1}개 보존` : ""})</span>`
       : '<span class="muted">미보고 — 초기대응에서는 생략 가능(발화점 기준 예측)</span>';
   };
-  function renderStatus() {
-    const I = inc(),
-      st = IS();
-    $("#st-mode").innerHTML = listModeHTML(state.listMode, "lm");
-    $$("#st-mode [data-lm]").forEach(
+  // 산불 날개의 산불 목록: 기본은 접수·진행 중, 「종료」로 바꾸면 종료 처리된 산불
+  function renderIncList() {
+    const selId = state.role === "reporter" ? state.rep.editingId : state.incId;
+    $("#inc-mode").innerHTML = listModeHTML(state.listMode, "lm");
+    $$("#inc-mode [data-lm]").forEach(
       (b) =>
         (b.onclick = () => {
           state.listMode = b.dataset.lm;
-          renderStatus();
+          renderIncList();
         }),
     );
-    $("#st-list").innerHTML = incidentListHTML(state.listMode, I.id);
-    $$("#st-list tr.clickable").forEach(
-      (tr) => (tr.onclick = () => selectIncident(tr.dataset.inc, true)),
+    $("#inc-list").innerHTML = incidentListHTML(state.listMode, selId);
+    $$("#inc-list tr.clickable").forEach(
+      (tr) =>
+        (tr.onclick = () => {
+          toggleIncDrawer(false);
+          if (state.role === "reporter") loadRepForm(tr.dataset.inc);
+          selectIncident(tr.dataset.inc, true);
+        }),
     );
+  }
+  // 산불현황: 발생·접수 정보와 진행상태·단계·기상·실측 화선·예측을 한 표로
+  function renderStatus() {
+    const I = inc(),
+      st = IS();
+    if ($("#inc-drawer").classList.contains("on")) renderIncList();
     $("#st-detail").innerHTML = `<table class="grid">
       <tr><td class="k">발생 장소</td><td colspan="3">${esc(I.addr)}<br><span class="small muted num">발화 위치 ${I.ignition[1].toFixed(5)}, ${I.ignition[0].toFixed(5)}</span></td></tr>
       <tr><td class="k">발생 일시</td><td>${I.start_time ? fmtIso(I.start_time) : '<span class="muted">미확인</span>'}</td><td class="k">신고 접수</td><td>${fmtIso(I.report_time)}</td></tr>
       <tr><td class="k">신고 내용</td><td colspan="3">${esc(I.report_text)}</td></tr>
       <tr><td class="k">접수 기록</td><td colspan="3">${intakeHTML(I)}</td></tr>
       <tr><td class="k">진행상태</td><td>${stBadge(I.status)}${I.ended_at ? ` <span class="small muted">종료 ${fmtIso(I.ended_at)}${I.ended_by ? " · " + esc(I.ended_by) : ""}</span>` : ""}</td><td class="k">공식 단계</td><td>${esc(I.official_stage)} · ${esc(I.alert_level)}</td></tr>
+      <tr><td class="k">기상</td><td colspan="3">${weatherHTML()}</td></tr>
       <tr><td class="k">실측 화선</td><td colspan="3">${perimHTML(I)}</td></tr>
       ${I.status === "종료" ? "" : `<tr><td class="k">예측</td><td colspan="3">${st.predicted ? `${fmt0(ringAreaHa(st.slices[4]))} ha(5h) · ${fmt0(ringAreaHa(st.slices[7]))} ha(8h) <span class="small muted">기준 실측 화선 ${st.predPerim ? "v" + st.predPerim.version : "없음(발화점)"}</span>${st.stale ? ' <span class="badge b-대기">재예측 필요</span>' : ""}` : '<span class="muted">예측 전</span>'}</td></tr>`}
     </table>`;
@@ -2294,30 +2197,25 @@
   }
 
   // ------------------------------------------------------------------ 렌더링: 확산예측 · 위험도
-  function renderPredict() {
+  // 상단 2줄 오른쪽: 「확산 예측 실행」(통합지휘권자) → 예측이 있으면 옆에 시간별 확산 재생
+  function renderPredBar() {
     const I = inc(),
       st = IS(),
-      cp = curPerim(I);
+      closed = I.status === "종료";
     const btn = $("#btn-predict");
-    btn.textContent = st.predicted ? "다시 예측" : "확산 예측 실행";
-    btn.disabled = I.status === "종료" || !!state.predicting;
-    const basis = cp
-      ? `최신 실측 화선 ${perimTag(cp)}(${fmt1(ringAreaHa(cp.ring))} ha, ${fmtHM(cp.at)} 보고)`
-      : "실측 화선 없음 — 발화점에서 예측";
-    if (I.status === "종료")
-      $("#predict-status").textContent =
-        "종료된 산불 — 예측 범위(P1~P8)를 표시하지 않습니다";
-    else if (!st.predicted)
-      $("#predict-status").textContent =
-        `${basis} · t0 ${hhmm(T0)} · ${dirName(wx().wind_dir)}풍 ${wx().wind_ms} m/s`;
-    else
-      $("#predict-status").textContent =
-        `완료(${hhmm(st.predictedAt)}) · 기준 실측 화선 ${st.predPerim ? "v" + st.predPerim.version : "없음(발화점)"} · 5h ${fmt0(ringAreaHa(st.slices[4]))} ha · 8h ${fmt0(ringAreaHa(st.slices[7]))} ha · 주 방향 ${dirName(state.wind.dir + 180)}${st.stale ? ` · 새 실측 화선(${cp ? perimTag(cp) : "발화 정보"})이 보고되어 「다시 예측」이 필요합니다` : ""}`;
-    $("#predict-progress").style.width =
-      st.predicted && I.status !== "종료" ? "100%" : "0%";
+    if (!state.predicting) {
+      btn.textContent = st.predicted ? "다시 예측" : "확산 예측 실행";
+      btn.disabled = closed;
+    } else btn.disabled = true;
+    $("#pred-warn").innerHTML =
+      st.predictFailed && !closed
+        ? warnHTML("확산 예측 정보를 가져오지 못했습니다")
+        : "";
+    $("#playbar").classList.toggle("on", st.predicted && !closed);
   }
   // UC-PRED-02 산불 위험도: 발화 지점의 기상·지형·연료·인프라 값 → 조건위험도(0~100)·등급·요인별 기여, 산불별 최대 위험도 저장
   function renderRisk() {
+    if (!$("#risk-box")) return;
     if (!canOperate()) {
       $("#risk-box").innerHTML = "";
       return;
@@ -2463,19 +2361,6 @@
       state.resAvailOnly = e.target.checked;
       renderResources();
     };
-  }
-  function renderLegend() {
-    const ico = (cls, key) =>
-      `<span class="ico-s" style="background:${ICON_COLOR[cls]}">${ICONS[key]}</span>`;
-    $("#lg-body").innerHTML = `
-      <div class="row"><span class="sw" style="background:#b3001b;opacity:.7"></span>현재 실측 화선(입력 폴리곤)</div>
-      <div class="row"><span class="sw" style="background:#ff4d1f;opacity:.7"></span>재생 시각까지 예측 확산 범위 <span class="sw" style="border:1.5px dashed #e08a00;margin-left:4px"></span>다음 1시간 윤곽</div>
-      <div class="row"><span class="sw" style="background:#ff8f66;opacity:.6"></span>위험구역(5h) <span class="sw" style="background:#ffd166;opacity:.7;margin-left:4px"></span>잠재 위험구역(8h)</div>
-      <div class="row">${ico("f0", "flame")}발화점 ${ico("village", "house")}마을 ${ico("shelter", "shelter")}대피소 ${ico("care", "care")}취약시설</div>
-      <div class="row">${ico("heritage", "heritage")}국가유산·사찰 ${ico("agency", "gov")}유관기관 ${ico("crew", "crew")}진화대 ${ico("water", "drop")}담수지</div>
-      <div class="row"><span class="sw" style="background:#3d8bff"></span>대피로 <span class="sw" style="border:1.5px dashed #555;background:#fff;margin-left:4px"></span>진입로 <span class="sw" style="background:#ff3b3b;opacity:.6;margin-left:4px"></span>겹침 구간</div>
-      <div class="row"><span class="sw" style="border-top:2px dotted #c9a000"></span>송전선 <span class="sw" style="border-top:1.5px dashed #999;margin-left:4px"></span>읍면 경계</div>
-      <div class="small muted" style="margin-top:6px">위성영상 Esri · 지도 OpenFreeMap © OpenMapTiles © OpenStreetMap contributors · 경계 SGIS</div>`;
   }
 
   // ------------------------------------------------------------------ 렌더링: 대응 제안(UC-PROP-01·02) · 근거(UC-PROP-03)
@@ -2628,6 +2513,7 @@
   function renderHistory() {
     const st = IS();
     const runs = st.runs.slice().reverse();
+    $("#hist-box summary").textContent = `제안서 버전 이력 (${runs.length})`;
     $("#hist-runs").innerHTML = runs.length
       ? `<table class="grid"><thead><tr><th>버전</th><th>생성</th><th>기준 화선</th><th>생성 계기</th><th title="즉시/대기/협의/요청">즉/대/협/요</th><th>변경</th><th></th></tr></thead><tbody>${runs.map((r) => `<tr class="${r === st.viewRun ? "sel" : ""}"><td style="text-align:center;white-space:nowrap"><b>${r.id}</b>${r === st.currentRun ? '<br><span class="small muted">최신</span>' : ""}</td><td class="num">${hhmm(r.createdAt)}</td><td style="text-align:center">${r.perim ? "v" + r.perim.version : '<span class="small muted">발화점</span>'}</td><td class="small">${esc(r.reason)}</td><td class="num" style="text-align:center">${r.summary["즉시"]}/${r.summary["대기"]}/${r.summary["협의"]}/${r.summary["요청"]}</td><td style="text-align:center">${r.seq > 1 ? `${r.changed.length}건` : "—"}</td><td style="white-space:nowrap"><button data-view="${r.id}">보기</button> <button data-diff="${r.id}">비교</button></td></tr>`).join("")}</tbody></table>`
       : `<div class="muted small" style="padding:6px">아직 생성된 제안서가 없습니다.</div>`;
@@ -2637,6 +2523,7 @@
           st.viewRun = st.runs.find((r) => r.id === b.dataset.view);
           renderAll();
           showTab("proposal");
+          $("#ipt-proposal").closest(".sp-body").scrollTop = 0;
         }),
     );
     $$("#hist-runs [data-diff]").forEach(
@@ -3324,22 +3211,7 @@
     const rp = state.rep,
       I = repInc(),
       closed = I && I.status === "종료";
-    $("#rep-mode").innerHTML = listModeHTML(rp.listMode, "rlm");
-    $$("#rep-mode [data-rlm]").forEach(
-      (b) =>
-        (b.onclick = () => {
-          rp.listMode = b.dataset.rlm;
-          renderReporter();
-        }),
-    );
-    $("#rep-list").innerHTML = incidentListHTML(rp.listMode, rp.editingId);
-    $$("#rep-list tr.clickable").forEach(
-      (tr) =>
-        (tr.onclick = () => {
-          loadRepForm(tr.dataset.inc);
-          selectIncident(tr.dataset.inc, true);
-        }),
-    );
+    if ($("#inc-drawer").classList.contains("on")) renderIncList();
     $("#rep-form-title").innerHTML = I
       ? `발화 정보 — ${esc(I.name)} ${stBadge(I.status)}`
       : "발화 정보 — 새 산불 보고";
@@ -3982,6 +3854,8 @@
     showPanel("#rep-panel", r === "reporter");
     showPanel("#info-panel", r === "commander" || r === "viewer");
     showPanel("#chat-panel", false);
+    toggleLogPanel(false);
+    toggleIncDrawer(false);
     $("#chat-fab").style.display = "";
     $("#admin-screen").classList.toggle("on", r === "admin");
     document.body.classList.toggle("reporter", r === "reporter");
@@ -4145,7 +4019,7 @@
       return;
     }
     renderStatus();
-    renderPredict();
+    renderPredBar();
     renderRisk();
     renderResources();
     renderProposal();
@@ -4191,7 +4065,10 @@
       showPanel("#chat-panel", false);
       $("#chat-fab").style.display = "";
     };
-    $$(".menu-btn").forEach((b) => (b.onclick = () => showTab(b.dataset.menu)));
+    $("#btn-log").onclick = () => toggleLogPanel();
+    $("#log-close").onclick = () => toggleLogPanel(false);
+    $("#wing-fire").onclick = () => toggleIncDrawer();
+    $("#inc-close").onclick = () => toggleIncDrawer(false);
     $("#btn-resources").onclick = () => {
       showPanel("#left-panel");
       $("#btn-resources").classList.toggle(
@@ -4211,21 +4088,8 @@
         }),
     );
     $$(".ip-tab").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
-    $("#ip-close").onclick = () => {
-      showPanel("#info-panel", false);
-      $$(".menu-btn").forEach((m) => m.classList.remove("on"));
-    };
     $("#ip-fit").onclick = () =>
       map && map.flyTo({ center: inc().ignition, zoom: 12.5, duration: 800 });
-    $$(".vtab").forEach(
-      (v) =>
-        (v.onclick = () => {
-          if (v.dataset.v === "fire")
-            showPanel(state.role === "reporter" ? "#rep-panel" : "#info-panel");
-          else showPanel("#legend-panel");
-        }),
-    );
-    $("#lg-close").onclick = () => showPanel("#legend-panel", false);
     $("#ts-zoom-in").onclick = () => map && map.zoomIn();
     $("#ts-zoom-out").onclick = () => map && map.zoomOut();
     $("#ts-zoom").oninput = (e) => map && map.setZoom(Number(e.target.value));
@@ -4319,16 +4183,13 @@
       if (e.key === "Escape") {
         closeModal();
         $("#evidence-drawer").classList.remove("on");
+        toggleIncDrawer(false);
         cancelModes();
       }
     });
-    [
-      "#info-panel",
-      "#left-panel",
-      "#legend-panel",
-      "#chat-panel",
-      "#rep-panel",
-    ].forEach((id) => makeDraggable($(id)));
+    ["#left-panel", "#log-panel", "#chat-panel"].forEach((id) =>
+      makeDraggable($(id)),
+    );
   }
 
   // 마커 스타일 (위성영상 위 가독성: 흰 라벨)
@@ -4359,8 +4220,6 @@
   // ------------------------------------------------------------------ 시작
   state.houses = genHouses();
   bind();
-  renderLegend();
-  $("#ip-clock").textContent = `${ymd(T0)} ${hhmm(T0)}`;
   document.body.classList.add("satmap");
   function fitPanelsToStage() {
     const stage = $("#stage");
