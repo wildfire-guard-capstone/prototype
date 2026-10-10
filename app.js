@@ -2313,6 +2313,18 @@
         : "";
     $("#playbar").classList.toggle("on", st.predicted && !closed);
   }
+  // 위험도 구간 색: 4 이상 빨강 · 3 이상 주황 · 2 이상 노랑 · 1 이상 파랑(화면에 보이는 소수 둘째 자리 값 기준)
+  const RISK_BANDS = ["rk-red", "rk-orange", "rk-yellow", "rk-blue"];
+  const riskBand = (s) => {
+    if (s == null || !isFinite(s)) return "";
+    const v = Math.round(s * 100) / 100;
+    return v >= 4 ? "rk-red" : v >= 3 ? "rk-orange" : v >= 2 ? "rk-yellow" : "rk-blue";
+  };
+  // 위험도를 뜻하는 숫자는 구간 색 칩으로(digits 0 = 변수 등급 정수)
+  const riskChip = (s, digits = 2) =>
+    s == null
+      ? "—"
+      : `<span class="rk-chip ${riskBand(s)}">${digits ? s.toFixed(digits) : s}</span>`;
   // UC-PRED-02 산불 위험도: 지도 오른쪽 위 네모에 숫자만(통합지휘권자). 산불을 고르지 않았거나 예측 전·종료된 산불이면 숨김
   function renderRisk() {
     const box = $("#risk-box"),
@@ -2328,6 +2340,8 @@
     const rk = riskOf(I),
       failed = st.riskStatus === "failed" || !rk;
     box.classList.toggle("fail", failed);
+    box.classList.remove(...RISK_BANDS);
+    if (!failed) box.classList.add(riskBand(rk.score));
     box.innerHTML = failed
       ? `${WARN_SVG}<span>—</span>`
       : `<span>${rk.score.toFixed(2)}</span>`;
@@ -2344,11 +2358,11 @@
     }
     const pos = Math.max(0, Math.min(100, ((rk.score - 1) / 4) * 100));
     body.innerHTML = `
-      <div class="rk-top"><div class="rk-v">${rk.score.toFixed(2)}</div><div class="rk-scale"><div class="rk-track"><i style="left:${pos}%"></i></div><div class="rk-ticks"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div></div></div>
+      <div class="rk-top"><div class="rk-v ${riskBand(rk.score)}">${rk.score.toFixed(2)}</div><div class="rk-scale"><div class="rk-track"><i style="left:${pos}%"></i></div><div class="rk-ticks"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div></div></div>
       <table class="grid rk-fac"><thead><tr><th>요소</th><th>점수</th><th style="width:62px">가중치</th></tr></thead><tbody>${rk.factors
         .map(
           (f) =>
-            `<tr class="clickable" data-axis="${f.key}" title="${esc(f.name)} 변수 보기"><td><b>${esc(f.name)}</b></td><td><span class="rk-bar"><i style="width:${f.score == null ? 0 : (f.score / 5) * 100}%"></i></span><b class="num">${f.score == null ? "—" : f.score.toFixed(2)}</b></td><td class="num" style="text-align:center">${f.weight.toFixed(3)}</td></tr>`,
+            `<tr class="clickable" data-axis="${f.key}" title="${esc(f.name)} 변수 보기"><td><b>${esc(f.name)}</b></td><td><span class="rk-bar"><i class="${riskBand(f.score)}" style="width:${f.score == null ? 0 : (f.score / 5) * 100}%"></i></span>${riskChip(f.score)}</td><td class="num" style="text-align:center">${f.weight.toFixed(3)}</td></tr>`,
         )
         .join("")}</tbody></table>
       <table class="grid rk-meta"><tr><td class="k">기준</td><td>화선 ${perimTag(st.predPerim)} · P5</td></tr><tr><td class="k">계산 시각</td><td>${rk.computedAt ? ymdhm(rk.computedAt) : "—"}</td></tr></table>
@@ -2375,11 +2389,11 @@
       .map((f) => {
         const vs = rk.vars.filter((v) => v.axis === f.key);
         return (
-          `<tr class="grp" id="rv-${f.key}"><td colspan="3"><b>${esc(f.name)}</b> (${vs.length})</td><td class="num">${f.weight.toFixed(3)}</td><td class="num"><b>${f.score == null ? "—" : f.score.toFixed(2)}</b></td></tr>` +
+          `<tr class="grp" id="rv-${f.key}"><td colspan="3"><b>${esc(f.name)}</b> (${vs.length})</td><td class="num">${f.weight.toFixed(3)}</td><td class="num">${riskChip(f.score)}</td></tr>` +
           vs
             .map(
               (v) =>
-                `<tr><td>${esc(v.name)}</td><td class="num">${v.value == null ? warnHTML("가져오지 못함") : esc(varValueText(v))}</td><td style="text-align:center">${esc(v.unit || "—")}</td><td class="num">${v.wn.toFixed(3)}</td><td class="num"><b>${v.grade ?? "—"}</b></td></tr>`,
+                `<tr><td>${esc(v.name)}</td><td class="num">${v.value == null ? warnHTML("가져오지 못함") : esc(varValueText(v))}</td><td style="text-align:center">${esc(v.unit || "—")}</td><td class="num">${v.wn.toFixed(3)}</td><td class="num">${riskChip(v.grade, 0)}</td></tr>`,
             )
             .join("")
         );
@@ -2387,7 +2401,7 @@
       .join("");
     openModal(
       "요소별 지표",
-      `<table class="grid rv"><thead><tr><th>변수명</th><th>값</th><th style="width:60px">단위</th><th style="width:70px">가중치</th><th style="width:64px">위험도</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3"><b>산불 위험도</b></td><td class="num">1.000</td><td class="num"><b>${rk.score.toFixed(2)}</b></td></tr></tfoot></table>`,
+      `<table class="grid rv"><thead><tr><th>변수명</th><th>값</th><th style="width:60px">단위</th><th style="width:70px">가중치</th><th style="width:64px">위험도</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3"><b>산불 위험도</b></td><td class="num">1.000</td><td class="num">${riskChip(rk.score)}</td></tr></tfoot></table>`,
       [{ label: "닫기" }],
     );
     $("#modal").classList.add("wide");
@@ -2753,14 +2767,15 @@
       button.disabled = busy;
     });
   }
-  function botSay(text, blockId) {
+  function botSay(text, blockId, richHTML) {
     chatTypingCount += 1;
     updateChatBusy();
 
     const d = addMsg("bot", "");
     let i = 0;
 
-    const html = blockId ? citeHTML(text, blockId) : esc(text);
+    const html =
+      richHTML || (blockId ? citeHTML(text, blockId) : esc(text));
 
     const iv = setInterval(() => {
       i += 3;
@@ -2883,6 +2898,16 @@
           `계산 시각 ${computedAt}. ` +
           `요소별 점수는 ${factorText}입니다.` +
           missingText,
+        null,
+        `산불 위험도는 ${riskChip(rk.score)}입니다(1.00~5.00, P5 기준). ` +
+          `계산 시각 ${esc(computedAt)}. ` +
+          `요소별 점수는 ${rk.factors
+            .map(
+              (f) =>
+                `${esc(f.name)} ${riskChip(f.score)}(가중치 ${f.weight.toFixed(3)})`,
+            )
+            .join(", ")}입니다.` +
+          esc(missingText),
       );
 
       return;

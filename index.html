@@ -1059,6 +1059,36 @@
         background: var(--red);
         transition: width 0.25s;
       }
+      /* 위험도 구간 색: 4 이상 빨강 · 3 이상 주황 · 2 이상 노랑 · 1 이상 파랑 */
+      .rk-red {
+        --rk: #e60012;
+        --rk-fg: #fff;
+      }
+      .rk-orange {
+        --rk: #ff8a00;
+        --rk-fg: #1a1a1a;
+      }
+      .rk-yellow {
+        --rk: #ffd60a;
+        --rk-fg: #1a1a1a;
+      }
+      .rk-blue {
+        --rk: #1e6fe8;
+        --rk-fg: #fff;
+      }
+      .rk-chip {
+        display: inline-block;
+        min-width: 22px;
+        padding: 0 5px;
+        border-radius: 3px;
+        background: var(--rk, #eee);
+        color: var(--rk-fg, #333);
+        font-weight: 800;
+        text-align: center;
+        line-height: 1.5;
+        font-variant-numeric: tabular-nums;
+      }
+
       /* 산불 위험도: 지도 오른쪽 위 네모 · 팝업 · 요소별 지표 표 */
       #risk-box {
         position: absolute;
@@ -1072,21 +1102,21 @@
         justify-content: center;
         gap: 3px;
         padding: 0;
-        background: #fff;
-        border: 1px solid #6b7280;
+        background: var(--rk, #fff);
+        border: 1px solid rgba(0, 0, 0, 0.45);
         border-radius: 4px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
         font-size: 21px;
         font-weight: 800;
-        color: #1f2937;
+        color: var(--rk-fg, #1f2937);
         font-variant-numeric: tabular-nums;
       }
       #risk-box.on {
         display: flex;
       }
       #risk-box:hover {
-        background: #fff;
-        border-color: var(--red);
+        background: var(--rk, #fff);
+        border-color: #111;
         box-shadow: 0 0 0 2px rgba(208, 52, 44, 0.25), 0 2px 8px rgba(0, 0, 0, 0.35);
       }
       #risk-box.fail {
@@ -1113,9 +1143,13 @@
         margin-bottom: 8px;
       }
       .rk-v {
-        font-size: 30px;
+        font-size: 28px;
         font-weight: 800;
         line-height: 1;
+        padding: 6px 10px;
+        border-radius: 4px;
+        background: var(--rk, #fff);
+        color: var(--rk-fg, #1f2937);
         font-variant-numeric: tabular-nums;
       }
       .rk-scale {
@@ -1125,15 +1159,22 @@
         position: relative;
         height: 8px;
         border-radius: 4px;
-        background: linear-gradient(90deg, #e5e7eb, #9ca3af);
+        background: linear-gradient(
+          90deg,
+          #1e6fe8 0 25%,
+          #ffd60a 25% 50%,
+          #ff8a00 50% 75%,
+          #e60012 75% 100%
+        );
       }
       .rk-track i {
         position: absolute;
-        top: -4px;
-        width: 3px;
-        height: 16px;
-        margin-left: -1px;
-        background: var(--red);
+        top: -5px;
+        width: 4px;
+        height: 18px;
+        margin-left: -2px;
+        background: #111;
+        box-shadow: 0 0 0 1.5px #fff;
       }
       .rk-ticks {
         display: flex;
@@ -1157,7 +1198,7 @@
         left: 0;
         top: 0;
         bottom: 0;
-        background: var(--red);
+        background: var(--rk, var(--red));
       }
       .rk-meta {
         margin-top: 6px;
