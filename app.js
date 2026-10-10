@@ -92,7 +92,7 @@
     sat: true,
     axis: "진화",
     filter: "all",
-    resAvailOnly: true,
+    resFilter: { 대기: true, 투입: true, 정비: true },
     listMode: "진행",
     houses: null,
     markers: {},
@@ -333,7 +333,7 @@
   function resSummary() {
     const by = {};
     RTYPES.forEach(
-      (t) => (by[t] = { 보유: 0, 투입: 0, 대기: 0, 정비: 0, 가용: 0 }),
+      (t) => (by[t] = { 보유: 0, 투입: 0, 대기: 0, 정비: 0 }),
     );
     S.resources.forEach((r) => {
       const b = by[r.type];
@@ -342,7 +342,6 @@
       b.보유 += q;
       b[r.status] = (b[r.status] || 0) + q;
     });
-    RTYPES.forEach((t) => (by[t].가용 = by[t].투입 + by[t].대기));
     return by;
   }
   function rsView() {
@@ -2406,30 +2405,38 @@
   }
 
   // ------------------------------------------------------------------ 렌더링: 진화자원 현황(UC-SIT-03)
-  // 진화자원 현황(UC-SIT-03): 기본은 「가용만 보기」 필터(가용 합계와 가용 단위만), 끄면 보유·투입·대기까지 모두 표시
+  // 진화자원 현황(UC-SIT-03): 대기·투입·정비 체크박스로 거른다(처음에는 셋 다 체크). 합계 칸은 체크한 상태만
+  const RSTATUS = ["대기", "투입", "정비"];
   function renderResources() {
     if (S.resources_fetch_status === "failed") {
       $("#lp-body").innerHTML = warnHTML("진화자원 정보를 가져오지 못했습니다");
       return;
     }
     const by = resSummary(),
-      only = state.resAvailOnly;
+      cols = RSTATUS.filter((s) => state.resFilter[s]);
     const rows = S.resources
-      .filter((r) => !only || r.status !== "정비")
+      .filter((r) => state.resFilter[r.status])
       .sort(
         (a, b) =>
           RTYPES.indexOf(a.type) - RTYPES.indexOf(b.type) ||
-          (a.status === "투입" ? -1 : 1),
+          RSTATUS.indexOf(a.status) - RSTATUS.indexOf(b.status),
       );
-    const cols = only ? ["가용"] : ["보유", "투입", "대기", "가용"];
+    const stCls = { 투입: "g", 대기: "y", 정비: "m" };
     $("#lp-body").innerHTML = `
-      <label class="small" style="display:flex;align-items:center;gap:4px;margin-bottom:6px"><input type="checkbox" id="res-avail" ${only ? "checked" : ""}> 가용만 보기 <span class="muted">(가용 = 투입 + 대기, 정비 제외)</span></label>
-      <div class="cnt" style="grid-template-columns:56px repeat(${cols.length}, 1fr)"><div class="h">구분</div>${cols.map((c) => `<div class="h">${c}</div>`).join("")}${RTYPES.map((t) => `<div class="h">${t}${t === "인력" ? "(명)" : "(대)"}</div>${cols.map((c) => `<div><b>${by[t][c]}</b></div>`).join("")}`).join("")}</div>
-      <table class="grid"><thead><tr><th>구분</th><th>명칭·호출부호</th><th>소속</th><th>수량</th><th>상태</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.type)}</td><td>${esc(r.name)}</td><td class="small">${esc(r.org)}</td><td class="num" style="text-align:center">${r.type === "인력" ? r.qty + "명" : "1대"}</td><td class="${r.status === "투입" ? "g" : r.status === "대기" ? "y" : ""}" style="text-align:center">${esc(r.status)}</td></tr>`).join("")}</tbody></table>`;
-    $("#res-avail").onchange = (e) => {
-      state.resAvailOnly = e.target.checked;
-      renderResources();
-    };
+      <div class="res-filter">${RSTATUS.map((s) => `<label><input type="checkbox" data-rs="${s}" ${state.resFilter[s] ? "checked" : ""}> ${s}</label>`).join("")}</div>
+      ${
+        cols.length
+          ? `<div class="cnt" style="grid-template-columns:56px repeat(${cols.length}, 1fr)"><div class="h">구분</div>${cols.map((c) => `<div class="h">${c}</div>`).join("")}${RTYPES.map((t) => `<div class="h">${t}${t === "인력" ? "(명)" : "(대)"}</div>${cols.map((c) => `<div><b>${by[t][c]}</b></div>`).join("")}`).join("")}</div>
+      <table class="grid"><thead><tr><th>구분</th><th>명칭·호출부호</th><th>소속</th><th>수량</th><th>상태</th></tr></thead><tbody>${rows.map((r) => `<tr><td class="nw">${esc(r.type)}</td><td>${esc(r.name)}</td><td class="small">${esc(r.org)}</td><td class="num nw" style="text-align:center">${r.type === "인력" ? r.qty + "명" : "1대"}</td><td class="nw ${stCls[r.status] || ""}" style="text-align:center">${esc(r.status)}</td></tr>`).join("")}</tbody></table>`
+          : `<div class="muted small" style="padding:8px 4px;text-align:center">선택한 상태가 없습니다.</div>`
+      }`;
+    $$("#lp-body [data-rs]").forEach(
+      (cb) =>
+        (cb.onchange = () => {
+          state.resFilter[cb.dataset.rs] = cb.checked;
+          renderResources();
+        }),
+    );
   }
 
   // ------------------------------------------------------------------ 렌더링: 대응 제안(UC-PROP-01·02) · 근거(UC-PROP-03)

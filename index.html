@@ -320,6 +320,10 @@
       table.grid td.y {
         background: #ffff99;
       }
+      table.grid td.m {
+        background: #ececec;
+        color: #666;
+      }
       table.grid td.g {
         background: #99ff99;
       }
@@ -1676,6 +1680,22 @@
       }
       #left-panel .fbody {
         padding: 6px;
+      }
+      .res-filter {
+        display: flex;
+        gap: 14px;
+        margin-bottom: 6px;
+        font-size: 12px;
+      }
+      .res-filter label {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+      }
+      #left-panel td.nw,
+      #left-panel th {
+        white-space: nowrap;
       }
       #left-panel .cnt {
         display: grid;
