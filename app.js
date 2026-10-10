@@ -278,7 +278,8 @@
     }
     return r;
   }
-  // 실측 화선 버전(UC-REPORT-01): 최신 '유효' 버전이 현재 화선이며 예측의 시작점이다(없으면 발화점)
+  // 화선 버전(UC-REPORT-01): v1은 발화점(접수 시), 실측 화선은 보고할 때마다 v2, v3 …
+  // 최신 '유효' 실측 화선이 현재 화선이며 예측의 시작점이다(없으면 발화점 = v1)
   const curPerim = (i = inc()) => {
     const v = (i.perimeters || []).filter((p) => p.status === "유효");
     return v.length ? v[v.length - 1] : null;
@@ -287,7 +288,9 @@
     const p = curPerim(i);
     return p ? p.ring : null;
   };
-  const perimTag = (p) => (p ? `v${p.version}` : "없음(발화점)");
+  const IGNITION_VER = 1;
+  const perimVer = (p) => (p ? p.version : IGNITION_VER);
+  const perimTag = (p) => (p ? `v${p.version}` : `v${IGNITION_VER}(발화점)`);
   function mulberry(seed) {
     return () => {
       seed |= 0;
@@ -916,9 +919,13 @@
     const R = computeRules(I, slices);
     const blocks = buildProposal(R, I);
     const seq = st.runSeq + 1;
+    // 제안서 버전 v(화선 버전).(대응 생성 버전): 화선 버전이 바뀌면 뒤 번호는 1부터
+    const fv = perimVer(predPerim);
+    const n = st.runs.filter((r) => r.fv === fv).length + 1;
 
     const run = {
-      id: `버전 ${seq}`,
+      id: `v${fv}.${n}`,
+      fv,
       seq,
       createdAt: nowSim(),
       reason,
@@ -2057,7 +2064,7 @@
         state.predicting = false;
         addEvent(
           "예측",
-          `확산 예측 갱신 — 5h ${fmt0(predAreaHa(st, 4))} ha, 8h ${fmt0(predAreaHa(st, 7))} ha, 주 방향 ${dirName(state.wind.dir + 180)} · 기준 실측 화선 ${perimTag(perim)}`,
+          `확산 예측 갱신 — 5h ${fmt0(predAreaHa(st, 4))} ha, 8h ${fmt0(predAreaHa(st, 7))} ha, 주 방향 ${dirName(state.wind.dir + 180)} · 기준 화선 ${perimTag(perim)}`,
         );
         setT(0);
         const run = generateProposal("예측 갱신", preparedRun);
@@ -2273,7 +2280,7 @@
       <tr><td class="k">진행상태</td><td>${stBadge(I.status)}${I.ended_at ? ` <span class="small muted">종료 ${fmtIso(I.ended_at)}${I.ended_by ? " · " + esc(I.ended_by) : ""}</span>` : ""}</td><td class="k">공식 단계</td><td>${esc(I.official_stage)} · ${esc(I.alert_level)}</td></tr>
       <tr><td class="k">기상</td><td colspan="3">${weatherHTML()}</td></tr>
       <tr><td class="k">실측 화선</td><td colspan="3">${perimHTML(I)}</td></tr>
-      ${I.status === "종료" ? "" : `<tr><td class="k">예측</td><td colspan="3">${st.predicted ? `${fmt0(predAreaHa(st, 4))} ha(5h) · ${fmt0(predAreaHa(st, 7))} ha(8h) <span class="small muted">기준 실측 화선 ${st.predPerim ? "v" + st.predPerim.version : "없음(발화점)"}</span>${st.stale ? ' <span class="badge b-대기">재예측 필요</span>' : ""}` : '<span class="muted">예측 전</span>'}</td></tr>`}
+      ${I.status === "종료" ? "" : `<tr><td class="k">예측</td><td colspan="3">${st.predicted ? `${fmt0(predAreaHa(st, 4))} ha(5h) · ${fmt0(predAreaHa(st, 7))} ha(8h) <span class="small muted">기준 화선 ${perimTag(st.predPerim)}</span>${st.stale ? ' <span class="badge b-대기">재예측 필요</span>' : ""}` : '<span class="muted">예측 전</span>'}</td></tr>`}
     </table>`;
     const ac = $("#st-actions");
     ac.innerHTML = "";
@@ -2463,7 +2470,7 @@
       isCurrent = run === st.currentRun,
       closed = inc().status === "종료";
     $("#prop-meta").innerHTML = run
-      ? `<b>${run.id}</b> · 생성 ${hhmm(run.createdAt)}(${esc(run.reason)}) · 기준 실측 화선 <b>${run.perim ? "v" + run.perim.version : "없음(발화점)"}</b> · 공식 ${esc(run.snapshot.official_stage)} · 판정 <b>${esc(run.R.recStage)}</b>${isCurrent ? "" : ' <span class="badge b-없음">이전 버전</span> <a href="#" id="prop-latest">최신 버전으로</a>'}${closed ? ' <span class="badge b-종료">조회 전용</span>' : ""}`
+      ? `<b>${run.id}</b> · 생성 ${hhmm(run.createdAt)}(${esc(run.reason)}) · 기준 화선 <b>${perimTag(run.perim)}</b> · 공식 ${esc(run.snapshot.official_stage)} · 판정 <b>${esc(run.R.recStage)}</b>${isCurrent ? "" : ' <span class="badge b-없음">이전 버전</span> <a href="#" id="prop-latest">최신 버전으로</a>'}${closed ? ' <span class="badge b-종료">조회 전용</span>' : ""}`
       : "";
     const pl = $("#prop-latest");
     if (pl)
@@ -2597,7 +2604,7 @@
     const runs = st.runs.slice().reverse();
     $("#hist-box summary").textContent = `제안서 버전 이력 (${runs.length})`;
     $("#hist-runs").innerHTML = runs.length
-      ? `<table class="grid"><thead><tr><th>버전</th><th>생성</th><th>기준 화선</th><th>생성 계기</th><th title="즉시/대기/협의/요청">즉/대/협/요</th><th>변경</th><th></th></tr></thead><tbody>${runs.map((r) => `<tr class="${r === st.viewRun ? "sel" : ""}"><td style="text-align:center;white-space:nowrap"><b>${r.id}</b>${r === st.currentRun ? '<br><span class="small muted">최신</span>' : ""}</td><td class="num">${hhmm(r.createdAt)}</td><td style="text-align:center">${r.perim ? "v" + r.perim.version : '<span class="small muted">발화점</span>'}</td><td class="small">${esc(r.reason)}</td><td class="num" style="text-align:center">${r.summary["즉시"]}/${r.summary["대기"]}/${r.summary["협의"]}/${r.summary["요청"]}</td><td style="text-align:center">${r.seq > 1 ? `${r.changed.length}건` : "—"}</td><td style="white-space:nowrap"><button data-view="${r.id}">보기</button> <button data-diff="${r.id}">비교</button></td></tr>`).join("")}</tbody></table>`
+      ? `<table class="grid"><thead><tr><th>버전</th><th>생성</th><th>기준 화선</th><th>생성 계기</th><th title="즉시/대기/협의/요청">즉/대/협/요</th><th>변경</th><th></th></tr></thead><tbody>${runs.map((r) => `<tr class="${r === st.viewRun ? "sel" : ""}"><td style="text-align:center;white-space:nowrap"><b>${r.id}</b>${r === st.currentRun ? '<br><span class="small muted">최신</span>' : ""}</td><td class="num">${hhmm(r.createdAt)}</td><td style="text-align:center">${r.perim ? "v" + r.perim.version : `v${IGNITION_VER} <span class="small muted">발화점</span>`}</td><td class="small">${esc(r.reason)}</td><td class="num" style="text-align:center">${r.summary["즉시"]}/${r.summary["대기"]}/${r.summary["협의"]}/${r.summary["요청"]}</td><td style="text-align:center">${r.seq > 1 ? `${r.changed.length}건` : "—"}</td><td style="white-space:nowrap"><button data-view="${r.id}">보기</button> <button data-diff="${r.id}">비교</button></td></tr>`).join("")}</tbody></table>`
       : `<div class="muted small" style="padding:6px">아직 생성된 제안서가 없습니다.</div>`;
     $$("#hist-runs [data-view]").forEach(
       (b) =>
@@ -2988,7 +2995,7 @@
       [
         /현재 상황|상황|피해면적/,
         () =>
-          `${I.name}은 ${I.status} 상태이며 공식 단계 ${I.official_stage}, 위기경보 ${I.alert_level}입니다. 실측 피해면적 ${R.areaNow ? fmt1(R.areaNow) + " ha" : "미입력"}(실측 화선 ${perimTag(curPerim(I))}), 5시간 후 예상 ${fmt0(R.areaP5)} ha이고 위험구역 마을은 ${vn(R.immediate)}, 잠재 위험구역 마을은 ${vn(R.standby)}입니다 [1].`,
+          `${I.name}은 ${I.status} 상태이며 공식 단계 ${I.official_stage}, 위기경보 ${I.alert_level}입니다. 실측 피해면적 ${R.areaNow ? fmt1(R.areaNow) + " ha" : "미입력"}(화선 ${perimTag(curPerim(I))}), 5시간 후 예상 ${fmt0(R.areaP5)} ha이고 위험구역 마을은 ${vn(R.immediate)}, 잠재 위험구역 마을은 ${vn(R.standby)}입니다 [1].`,
         "E1",
       ],
       [
@@ -3616,7 +3623,9 @@
     if (rp.ring) {
       I.perimeters = I.perimeters || [];
       const cp = curPerim(I),
-        nextV = I.perimeters.reduce((m, p) => Math.max(m, p.version), 0) + 1;
+        nextV =
+          I.perimeters.reduce((m, p) => Math.max(m, p.version), IGNITION_VER) +
+          1;
       const corrected = cp && rp.perimMode === "correct";
       if (corrected) cp.status = "정정됨";
       const source = /GeoJSON/.test(rp.ringSource || "")
