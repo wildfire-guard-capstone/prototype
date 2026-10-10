@@ -1226,7 +1226,7 @@
         /style|fetch|network|403|404|Failed/i.test(msg)
       ) {
         fellBack = true;
-        toast("벡터 지도를 불러오지 못해 래스터 지도로 대체합니다.");
+        failNotice("지도를 불러오지 못해 기본 지도로 표시합니다.");
         map.setStyle(FALLBACK_STYLE);
       }
     });
@@ -2062,6 +2062,8 @@
             : null;
         st.proposalFailed = false;
         state.predicting = false;
+        if (st.riskStatus === "failed")
+          failNotice("산불 위험도 정보를 가져오지 못했습니다.");
         addEvent(
           "예측",
           `확산 예측 갱신 — 5h ${fmt0(predAreaHa(st, 4))} ha, 8h ${fmt0(predAreaHa(st, 7))} ha, 주 방향 ${dirName(state.wind.dir + 180)} · 기준 화선 ${perimTag(perim)}`,
@@ -2091,7 +2093,14 @@
   const WARN_SVG = `<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex-shrink:0"><path d="M12 3 2 21h20L12 3Z" fill="#fff4ce" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 9v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>`;
   const warnHTML = (text) =>
     `<span class="warn" role="status">${WARN_SVG}<span>${esc(text)}</span></span>`;
-  const failNotice = (msg) => toast(msg, 4000);
+  // 조회·생성·불러오기 실패: 시스템 알림이 떴다가 저절로 사라진다(성공·안내는 아래쪽 toast)
+  function failNotice(msg, ms = 4000) {
+    const el = $("#sys-alert");
+    el.innerHTML = `${WARN_SVG}<span>${esc(msg)}</span>`;
+    el.classList.add("on");
+    clearTimeout(el._h);
+    el._h = setTimeout(() => el.classList.remove("on"), ms);
+  }
   function toast(msg, ms = 2600) {
     const t = $("#toast");
     t.textContent = msg;
@@ -2432,6 +2441,10 @@
   // ------------------------------------------------------------------ 렌더링: 진화자원 현황(UC-SIT-03)
   // 진화자원 현황(UC-SIT-03): 기본은 「가용만 보기」 필터(가용 합계와 가용 단위만), 끄면 보유·투입·대기까지 모두 표시
   function renderResources() {
+    if (S.resources_fetch_status === "failed") {
+      $("#lp-body").innerHTML = warnHTML("진화자원 정보를 가져오지 못했습니다");
+      return;
+    }
     const by = resSummary(),
       only = state.resAvailOnly;
     const rows = S.resources
@@ -2469,6 +2482,10 @@
       run = st.viewRun,
       isCurrent = run === st.currentRun,
       closed = inc().status === "종료";
+    $("#prop-warn").innerHTML =
+      st.proposalFailed && !closed
+        ? `<div style="margin-bottom:6px">${warnHTML(run ? "새 대응 제안 정보를 가져오지 못했습니다" : "대응 제안 정보를 가져오지 못했습니다")}</div>`
+        : "";
     $("#prop-meta").innerHTML = run
       ? `<b>${run.id}</b> · 생성 ${hhmm(run.createdAt)}(${esc(run.reason)}) · 기준 화선 <b>${perimTag(run.perim)}</b> · 공식 ${esc(run.snapshot.official_stage)} · 판정 <b>${esc(run.R.recStage)}</b>${isCurrent ? "" : ' <span class="badge b-없음">이전 버전</span> <a href="#" id="prop-latest">최신 버전으로</a>'}${closed ? ' <span class="badge b-종료">조회 전용</span>' : ""}`
       : "";
@@ -2826,6 +2843,13 @@
 
         if (corr) {
           proposeCorrection(corr, q);
+          return;
+        }
+
+        if (S.chat_demo?.mock_fail_next) {
+          S.chat_demo.mock_fail_next = false;
+          addMsg("bot", warnHTML("답변을 가져오지 못했습니다"));
+          failNotice("AI 답변을 가져오지 못했습니다.");
           return;
         }
 
@@ -4044,6 +4068,8 @@
     rebuildCrewMarkers();
     renderAll();
     setT(IS().t);
+    if (S.weather.fetch_status === "failed")
+      failNotice("기상 정보를 가져오지 못했습니다.");
     if (state.role === "reporter") loadRepForm(state.incId);
     showTab("status");
   }
@@ -4149,6 +4175,11 @@
     $("#inc-close").onclick = () => toggleIncDrawer(false);
     $("#btn-resources").onclick = () => {
       showPanel("#left-panel");
+      if (
+        S.resources_fetch_status === "failed" &&
+        $("#left-panel").classList.contains("on")
+      )
+        failNotice("진화자원 정보를 가져오지 못했습니다.");
       $("#btn-resources").classList.toggle(
         "on",
         $("#left-panel").classList.contains("on"),
@@ -4294,6 +4325,26 @@
     .seg { display:inline-flex; } .seg button { font-size:11px; padding:0 7px; border-radius:0; } .seg button + button { border-left:0; } .seg button.on { background:#444; color:#fff; border-color:#222; }
     .invalid { border-color:#d0342c !important; background:#fff1f0 !important; }`;
   document.head.appendChild(css);
+
+  // ------------------------------------------------------------------ 개발용 실패·병합 장면 (화면 버튼 없이 주소 뒤 붙임으로만)
+  // ?fail=weather,predict,proposal,risk,riskvars,resources,chat  ·  ?merge=1
+  (() => {
+    let q;
+    try {
+      q = new URLSearchParams(location.search);
+    } catch (e) {
+      return;
+    }
+    const fails = new Set((q.get("fail") || "").split(",").filter(Boolean));
+    if (fails.has("weather")) S.weather.fetch_status = "failed";
+    if (fails.has("predict")) S.prediction_demo.mock_fail_next = true;
+    if (fails.has("proposal")) S.prediction_demo.mock_fail_proposal_next = true;
+    if (fails.has("risk")) S.risk_model.mock_fail_next = true;
+    if (fails.has("riskvars")) S.risk_model.mock_missing_vars = ["gtemp", "rain7"];
+    if (fails.has("resources")) S.resources_fetch_status = "failed";
+    if (fails.has("chat")) S.chat_demo.mock_fail_next = true;
+    if (q.get("merge") === "1") S.risk_merge_demo.enabled = true;
+  })();
 
   // ------------------------------------------------------------------ 시작
   state.houses = genHouses();

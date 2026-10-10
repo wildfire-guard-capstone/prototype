@@ -369,6 +369,8 @@ window.SCENARIO = {
     mock_fail_next: false,
     mock_fail_proposal_next: false,
   },
+  // 개발용: 다음 AI 답변 1회만 실패
+  chat_demo: { mock_fail_next: false },
   // 산불 위험도(UC-PRED-02): 예측 1회마다 P5(5시간 누적 예측 범위) 기준으로 1개 계산. 1.00~5.00 숫자만 표시(등급 이름·매핑 없음)
   // 변수·단위·구간·가중치는 AI Hub 「산불 확산 위험 추론 데이터」 위험도 기준 CSV. 25개 중 경사도_down·도로 및 교통(접근성)을 뺀 23개
   // 위험도 = Σ(가중치 × 변수 등급 1~5) ÷ Σ가중치(0.94). 화면의 가중치는 0.94로 나눠 다시 맞춘 값(합 1.000)
@@ -753,6 +755,8 @@ window.SCENARIO = {
   // 진화자원(UC-ADMIN-02가 관리하는 데이터. 재난 시 자원 현황(UC-SIT-03)과 S3 자원 배분 제안의 공급원). 전부 가상
   // type: 헬기 | 차량 | 인력   status: 투입 | 대기 | 정비   qty: 인력은 명, 헬기·차량은 1   base: 배치 위치(평소 대기 장소)
   // 필수 값: 구분·명칭(호출부호)·소속·수량
+  // 개발용: "failed"이면 진화자원 현황을 가져오지 못한 장면
+  resources_fetch_status: "ready",
   resources: [
     {
       id: "r01",
