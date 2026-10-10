@@ -96,8 +96,6 @@
     listMode: "진행",
     houses: null,
     markers: {},
-    emdLabels: [],
-    crewMarkers: [],
     rep: {
       editingId: null,
       pickMode: false,
@@ -381,7 +379,6 @@
         cur--;
       }
     }
-    rebuildCrewMarkers();
     return cur;
   }
 
@@ -1211,8 +1208,24 @@
       center: [128.64, 36.38],
       zoom: 11.4,
       maxZoom: 18.5,
-      attributionControl: true,
+      attributionControl: false,
     });
+    map.addControl(
+      new maplibregl.AttributionControl({
+        compact: true,
+        customAttribution: "경계 © SGIS",
+      }),
+      "bottom-right",
+    );
+    const attrib = map.getContainer().querySelector(".maplibregl-ctrl-attrib");
+    const showAttrib = (on) => {
+      attrib.classList.toggle("maplibregl-compact-show", on);
+      if (on) attrib.setAttribute("open", "");
+      else attrib.removeAttribute("open");
+    };
+    attrib.addEventListener("mouseenter", () => showAttrib(true));
+    attrib.addEventListener("mouseleave", () => showAttrib(false));
+    map.once("load", () => showAttrib(false));
     map.addControl(
       new maplibregl.ScaleControl({ unit: "metric" }),
       "bottom-left",
@@ -1264,29 +1277,26 @@
       );
       if (map.getLayer("building-3d"))
         map.setLayoutProperty("building-3d", "visibility", "none");
-      add("admin", window.BOUNDARIES || EMPTY, [
-        {
-          id: "admin-emd",
-          type: "line",
-          filter: ["==", ["get", "level"], "emd"],
-          paint: {
-            "line-color": "#ffffff",
-            "line-width": 1.2,
-            "line-dasharray": [3, 3],
-            "line-opacity": 0.8,
+      // 의성군 기준: 군 테두리만 노란색 굵은 선으로 표시
+      add(
+        "admin",
+        fc(
+          (window.BOUNDARIES || EMPTY).features.filter(
+            (f) => f.properties.level === "sigungu",
+          ),
+        ),
+        [
+          {
+            id: "admin-sig",
+            type: "line",
+            paint: {
+              "line-color": "#ffd400",
+              "line-width": 4,
+              "line-opacity": 0.95,
+            },
           },
-        },
-        {
-          id: "admin-sig",
-          type: "line",
-          filter: ["==", ["get", "level"], "sigungu"],
-          paint: {
-            "line-color": "#ffe066",
-            "line-width": 2,
-            "line-opacity": 0.9,
-          },
-        },
-      ]);
+        ],
+      );
       add("risk", EMPTY, [
         {
           id: "risk-8",
@@ -1630,44 +1640,6 @@
     })
       .setLngLat(inc().ignition)
       .addTo(map);
-    (window.BOUNDARIES || EMPTY).features
-      .filter((f) => f.properties.level === "emd")
-      .forEach((f) => {
-        const ring =
-          f.geometry.type === "Polygon"
-            ? f.geometry.coordinates[0]
-            : f.geometry.coordinates
-                .slice()
-                .sort((a, b) => b[0].length - a[0].length)[0][0];
-        const c = ring
-          .reduce((a, p) => [a[0] + p[0], a[1] + p[1]], [0, 0])
-          .map((x) => x / ring.length);
-        const el = document.createElement("div");
-        el.className = "mk emd";
-        el.textContent = f.properties.name;
-        state.emdLabels.push(
-          new maplibregl.Marker({ element: el }).setLngLat(c).addTo(map),
-        );
-      });
-    rebuildCrewMarkers();
-  }
-  function rebuildCrewMarkers() {
-    if (!map) return;
-    state.crewMarkers.forEach((m) => m.remove());
-    state.crewMarkers = [];
-    Object.keys(state.markers)
-      .filter((k) => k.startsWith("c:"))
-      .forEach((k) => delete state.markers[k]);
-    S.resources
-      .filter((r) => r.type === "인력" && r.status === "투입" && r.pos)
-      .forEach((r) => {
-        const el = markerEl("crew", "crew", r.name, `${r.qty}명`);
-        const m = mkMarker(`c:${r.id}`, el, r.pos, () =>
-          simplePopup(r.id, r.pos, r.name, `진화인력 ${r.qty}명`),
-        );
-        state.crewMarkers.push(m);
-      });
-    applyLayerVisibility();
   }
   const popup = (lngLat, html) =>
     new maplibregl.Popup({ closeButton: true, maxWidth: "280px" })
@@ -1792,7 +1764,6 @@
     set(["rail"], layerOn("rail"));
     set(["power"], layerOn("power"));
     set(["route-access", "route-evac", "route-conflict"], layerOn("routes"));
-    set(["admin-emd", "admin-sig"], layerOn("admin"));
     const show = (prefix, v) =>
       Object.entries(state.markers).forEach(([k, m]) => {
         if (k.startsWith(prefix))
@@ -1800,7 +1771,6 @@
       });
     show("v:", layerOn("villages"));
     show("s:", layerOn("shelters"));
-    show("c:", layerOn("crew"));
     show("w:", layerOn("water"));
     show("a:", layerOn("agencies"));
     Object.entries(state.markers).forEach(([k, m]) => {
@@ -1815,9 +1785,6 @@
           : "none";
       }
     });
-    state.emdLabels.forEach(
-      (m) => (m.getElement().style.display = layerOn("admin") ? "" : "none"),
-    );
   }
   function applySat() {
     if (!map || !map.getLayer("sat")) return;
@@ -3273,7 +3240,6 @@
           r.status = "투입";
           sum += Number(r.qty) || 0;
         }
-        rebuildCrewMarkers();
       }
     }
     if (c.type === "eta") I.field_report.expected_suppression_hours = c.n;
@@ -4065,7 +4031,6 @@
       renderAdmin();
       return;
     }
-    rebuildCrewMarkers();
     renderAll();
     setT(IS().t);
     if (S.weather.fetch_status === "failed")
@@ -4307,19 +4272,15 @@
     .mk { display:flex; flex-direction:column; align-items:center; cursor:pointer; pointer-events:auto; }
     .mk .ico { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.6); border:1.5px solid #fff; }
     .mk .ico svg { width:13px; height:13px; stroke:#fff; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
-    .mk.crew .ico svg { stroke:#333; }
     .mk .lb { margin-top:1px; font-size:11px; font-weight:700; color:#fff; text-shadow:0 0 3px #000, 0 0 3px #000, 0 1px 2px #000; white-space:nowrap; line-height:1.3; text-align:center; }
     body:not(.satmap) .mk .lb { color:#111; text-shadow:0 0 3px #fff, 0 0 3px #fff; }
     .mk .lb small { display:none; font-size:9.5px; font-weight:500; }
     .mk:hover .lb small { display:block; }
     .mk.village.burned .ico { background:#e5341a !important; box-shadow:0 0 0 3px rgba(255,59,26,.35), 0 1px 3px rgba(0,0,0,.6); } .mk.village.burned .lb { color:#ffb3a3; }
     .mk.shelter.unsafe .ico { background:#ef4444 !important; }
-    .mk.crew .ico { width:18px; height:18px; } .mk.crew .lb { display:none; } .mk.crew:hover .lb { display:block; }
     .mk.water .lb { display:none; } .mk.water:hover .lb { display:block; }
     .mk.f0 .ico { width:26px; height:26px; box-shadow:0 0 0 6px rgba(255,42,0,.3), 0 1px 4px rgba(0,0,0,.6); } .mk.f0 .ico svg { width:15px; height:15px; } .mk.f0 .lb { color:#ffd0c4; font-size:12px; }
     .mk.pick .ico { width:26px; height:26px; box-shadow:0 0 0 6px rgba(255,106,0,.35), 0 1px 4px rgba(0,0,0,.6); } .mk.pick .lb { color:#ffd9b3; }
-    .mk.emd { font-size:11px; font-weight:700; color:#fff; letter-spacing:.06em; opacity:.85; pointer-events:none; text-shadow:0 0 3px #000, 0 0 3px #000; }
-    body:not(.satmap) .mk.emd { color:#334155; text-shadow:0 0 3px #fff, 0 0 3px #fff; }
     body.reporter .mk.village .lb, body.reporter .mk.shelter .lb { font-size:10px; }
     .maplibregl-marker { z-index:2; } .mk.f0, .mk.pick { z-index:5; }
     .seg { display:inline-flex; } .seg button { font-size:11px; padding:0 7px; border-radius:0; } .seg button + button { border-left:0; } .seg button.on { background:#444; color:#fff; border-color:#222; }
