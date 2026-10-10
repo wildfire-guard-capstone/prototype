@@ -6,7 +6,7 @@
     <title>산불 대응 AI 의사결정 지원 시스템</title>
     <meta
       name="description"
-      content="확산 예측 기반 산불 대응 의사결정 지원 시스템 시연 화면(산불상황관제시스템 화면 구성을 참고). 합성 데이터 사용."
+      content="확산 예측 기반 산불 대응 AI 의사결정 지원 시스템"
     />
     <link
       href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css"
@@ -143,63 +143,6 @@
       }
       .num {
         font-variant-numeric: tabular-nums;
-      }
-      .info {
-        display: inline-flex;
-        width: 13px;
-        height: 13px;
-        border-radius: 50%;
-        border: 1px solid #999;
-        color: #777;
-        font-size: 9px;
-        font-weight: 700;
-        align-items: center;
-        justify-content: center;
-        margin-left: 3px;
-        vertical-align: -1px;
-        cursor: help;
-        position: relative;
-        font-style: normal;
-        background: #fff;
-      }
-      .info::before {
-        content: "i";
-      }
-      .info::after {
-        content: attr(data-tip);
-        position: absolute;
-        bottom: calc(100% + 6px);
-        left: 50%;
-        transform: translateX(-50%);
-        width: max-content;
-        max-width: 260px;
-        background: #fffbe6;
-        color: #333;
-        border: 1px solid #c9b76b;
-        padding: 6px 9px;
-        border-radius: 3px;
-        font-size: 11px;
-        font-weight: 400;
-        line-height: 1.45;
-        white-space: normal;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.12s;
-        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
-        z-index: 90;
-        text-align: left;
-      }
-      .info:hover::after {
-        opacity: 1;
-      }
-      .info.l::after {
-        left: auto;
-        right: -6px;
-        transform: none;
-      }
-      .info.b::after {
-        bottom: auto;
-        top: calc(100% + 6px);
       }
       /* 못 가져온 정보 */
       .warn {
@@ -407,13 +350,6 @@
         font-size: 12px;
         color: #4b5563;
       }
-      .lg-env {
-        border: 1px solid #c9ced6;
-        padding: 1px 6px;
-        border-radius: 2px;
-        color: #6b7785;
-        font-size: 11px;
-      }
       .lg-body {
         flex: 1;
         display: flex;
@@ -500,22 +436,6 @@
         color: #e6eef8;
         position: relative;
       }
-      .lg-status {
-        margin-top: auto;
-        font-size: 11.5px;
-        color: #b9c9de;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        position: relative;
-      }
-      .lg-status .dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #34c17a;
-        box-shadow: 0 0 8px #34c17a;
-      }
       .lg-form {
         padding: 34px 32px;
         display: flex;
@@ -574,22 +494,6 @@
       }
       .lg-btn:hover {
         background: linear-gradient(#3169cc, #1a3a6b);
-      }
-      .lg-hint {
-        font-size: 11px;
-        color: #6b7785;
-        line-height: 1.6;
-        background: #f4f6f9;
-        border: 1px solid #e1e5ea;
-        padding: 6px 8px;
-        border-radius: 3px;
-      }
-      .lg-hint code {
-        background: #fff;
-        border: 1px solid #d9dee5;
-        padding: 0 3px;
-        border-radius: 2px;
-        font-family: inherit;
       }
       .lg-notice {
         width: 800px;
@@ -666,14 +570,6 @@
         height: 18px;
         background: #cdd3da;
         margin: 0 4px;
-      }
-      #top1 .sys .env {
-        font-size: 10px;
-        font-weight: 400;
-        color: #777;
-        border: 1px solid #ccc;
-        padding: 0 4px;
-        border-radius: 2px;
       }
       .sclock {
         display: flex;
@@ -1346,10 +1242,6 @@
         color: #fff;
         border-color: #222;
       }
-      #cards {
-        max-height: 50vh;
-        overflow: auto;
-      }
       .card {
         border: 1px solid #c5cad2;
         border-left: 4px solid #9aa3ad;
@@ -1599,6 +1491,9 @@
         flex-direction: column;
         flex: 1;
         padding: 6px;
+      }
+      #chat-ctx:empty {
+        display: none;
       }
       #chat-ctx {
         font-size: 11px;
@@ -2157,35 +2052,6 @@
           right: 8px;
         }
       }
-      /* 기존 아이콘 내부 툴팁 대신 공통 툴팁 사용 */
-      .info::after {
-        display: none;
-      }
-
-      #app-tooltip {
-        position: fixed;
-        z-index: 1000;
-        width: max-content;
-        max-width: min(360px, calc(100vw - 24px));
-        max-height: calc(100dvh - 24px);
-        overflow: auto;
-        padding: 8px 10px;
-        border: 1px solid #c9b76b;
-        border-radius: 3px;
-        background: #fffbe6;
-        color: #333;
-        font-size: 11px;
-        font-weight: 400;
-        line-height: 1.55;
-        text-align: left;
-        white-space: normal;
-        overflow-wrap: anywhere;
-        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
-      }
-
-      #app-tooltip[hidden] {
-        display: none;
-      }
     </style>
   </head>
   <body>
@@ -2202,7 +2068,7 @@
         </div>
         <div class="lg-right">
           <span>현재 시각 <b id="lg-clock" class="num">—</b> KST</span
-          ><span>고객센터 1588-4370</span><span class="lg-env">시연</span>
+          ><span>고객센터 1588-4370</span>
         </div>
       </div>
       <div class="lg-body">
@@ -2224,10 +2090,6 @@
                 진화·대피 대응 제안서, 근거·이력 조회, AI 질의응답·상황 정정
               </li>
             </ul>
-            <div class="lg-status">
-              <span class="dot"></span>시스템 정상 · 시연 시나리오 2025-03-22
-              의성 안평면
-            </div>
           </div>
           <div class="lg-form">
             <h1>LOGIN</h1>
@@ -2250,14 +2112,6 @@
             >
             <div class="lg-err" id="login-err"></div>
             <button id="login-btn" class="lg-btn">로그인</button>
-            <div class="lg-hint">
-              시연 계정: <code>cmd01</code> 통합지휘권자 ·
-              <code>view01</code> 열람자 · <code>rep01</code> 상황 보고자 ·
-              <code>admin01</code> 전산 관리자 (비밀번호 <code>1234</code>).
-              사용자 구분을 바꾸면 그 구분의 시연 계정이 자동으로 채워지며,
-              아이디·비밀번호·구분이 발급 계정과 맞아야 진입합니다. 5회 연속
-              실패하면 계정이 잠깁니다(전산 관리자만 해제).
-            </div>
           </div>
         </div>
         <div class="lg-notice">
@@ -2272,16 +2126,11 @@
               <span class="num">2025-03-15</span> 실측 화선 보고 주기 1시간 ·
               확산 예측은 통합지휘권자가 실행 · 위험구역 5h/잠재 8h 기준 적용
             </li>
-            <li>
-              <span class="num">2025-03-02</span> 시연 데이터 안내 — 화선은 합성
-              모델, 인구·수용 인원·자원·계정은 가상값입니다.
-            </li>
           </ul>
         </div>
       </div>
       <div class="lg-foot">
         <span>(35208) 대전광역시 서구 청사로 189 정부대전청사 · 산림청</span
-        ><span>본 화면은 캡스톤 시연용 목업으로 실제 서비스가 아닙니다.</span
         ><span>Copyright © Korea Forest Service. All rights reserved.</span>
       </div>
     </div>
@@ -2293,7 +2142,6 @@
           class="org"
           >산림청</span
         ><span class="vsep"></span>산불 대응 AI 의사결정 지원 시스템
-        <span class="env">시연</span>
       </div>
       <div class="sclock" title="서버 현재 시각 (한국표준시)">
         현재 시각 <b id="hdr-clock" class="num">—</b><span class="tz">KST</span>
@@ -2431,10 +2279,7 @@
                   ><button class="pfilter" data-f="대기">대기</button
                   ><button class="pfilter" data-f="협의">협의</button
                   ><button class="pfilter" data-f="요청">요청</button
-                  ><i
-                    class="info l"
-                    data-tip="즉시: 통합지휘권자 권한으로 지금 시행 · 대기: 조건 충족 시 시행 · 협의: 산림청장과 협의 · 요청: 타 기관에 요청. 항목을 누르면 판정 이유·대상·권한·근거를 펼칩니다. 문장 끝 번호는 근거, '변경' 태그는 직전 버전 대비 변경 내용입니다. 매뉴얼에 근거가 없는 수량·문장은 표시하지 않고 해당 칸에 '근거가 부족하여 표시하지 않았습니다'로 알리며, 이벤트 로그에 '근거 부족'으로 기록합니다."
-                  ></i>
+                  >
                 </div>
                 <div id="cards"></div>
                 <div id="prop-summary"></div>
@@ -2469,10 +2314,7 @@
           <section id="rep-panel" class="side-pane">
             <div class="sp-hd">
               <span>상황 입력 판</span
-              ><i
-                class="info b"
-                data-tip="처음 보고할 때 발화 위치·발생 일시·신고 내용·접수 시각·기관별 접수 기록을 입력하면 산불이 '접수' 상태로 생깁니다. 이후 1시간마다 실측 화선(지금 타고 있는 범위)을 폴리곤으로 보고하며, 첫 실측 화선이 저장되면 '진행 중'으로 바뀝니다. 초기대응에서는 화선을 생략할 수 있습니다. 실측 화선이 통합지휘권자의 재예측·제안 재생성의 출발점입니다."
-              ></i>
+              >
             </div>
             <div class="sp-body">
               <div class="btnrow">
@@ -2485,7 +2327,6 @@
                 ><button
                   id="rep-perim"
                   style="flex: 1; justify-content: center"
-                  title="선택한 산불의 직전 실측 화선을 불러와 수정 후 새 버전으로 제출"
                 >
                   실측 화선 보고
                 </button>
@@ -2519,7 +2360,6 @@
                   >발생 일시<input
                     id="rep-start"
                     type="datetime-local"
-                    title="접수 단계에서는 비워 둘 수 있습니다"
                 /></label>
                 <label
                   >신고 접수 일시 *<input id="rep-report" type="datetime-local"
@@ -2529,10 +2369,7 @@
                 </label>
               </div>
               <div class="sec">
-                기관별 접수 기록<i
-                  class="info l"
-                  data-tip="접수 기관·접수 시각·접수 경로(119 신고, 상황 전파 등)를 추가합니다."
-                ></i>
+                기관별 접수 기록
               </div>
               <div id="rep-intake"></div>
               <div class="intake-add">
@@ -2545,12 +2382,7 @@
                 /><button id="ik-add">추가</button>
               </div>
               <div class="sec">
-                실측 화선(폴리곤)<span class="r small muted"
-                  >초기대응에서는 생략 가능</span
-                ><i
-                  class="info l"
-                  data-tip="지도에서 꼭짓점을 차례로 눌러 그리고 「그리기 완료」를 누르거나, GeoJSON Polygon 좌표를 붙여 넣습니다. 「실측 화선 보고」는 직전 화선을 불러옵니다. 저장하면 새 버전(v2, v3 …)으로 쌓이고, 「정정」을 고르면 이전 버전은 '정정됨'으로 보존됩니다."
-                ></i>
+                실측 화선(폴리곤)
               </div>
               <div id="rep-perim-cur"></div>
               <div class="btnrow">
@@ -2665,17 +2497,11 @@
         <div id="chat-panel" class="fpanel">
           <div class="fhd">
             <span class="clock">AI 어시스턴트</span
-            ><i
-              class="info b"
-              data-tip="현재 상황·대응 제안·근거를 자연어나 빠른 질문으로 묻습니다(상황·제안은 바뀌지 않음). 현장에서 바뀐 사실(예: 박곡리 대피 완료, 헬기 6대 투입, 예상 진화시간 12시간, 대피명령 발령)은 「상황 정정」으로 입력하면 정정 확인 카드에서 확인 후 저장하고, 예측은 그대로 둔 채 제안서를 다시 만듭니다. 답변은 검색된 표준매뉴얼 근거만 인용하며, 근거가 부족한 답변은 표시하지 않고 그 사실만 알린 뒤 이벤트 로그에 '근거 부족'으로 기록합니다. 시연에서는 대본 응답입니다."
-            ></i
             ><span style="flex: 1"></span
             ><button class="ibtn" id="chat-close">✕</button>
           </div>
           <div class="fbody">
-            <div id="chat-ctx">
-              항목 미지정 — 대응제안 항목의 「질문」으로 항목을 붙일 수 있습니다
-            </div>
+            <div id="chat-ctx"></div>
             <div id="chat-log"></div>
             <div class="chat-quick" id="chat-quick"></div>
             <form id="chat-form">
@@ -2695,11 +2521,7 @@
                   border: 0;
                 "
               ></span>
-              <button
-                type="button"
-                id="btn-corr"
-                title="상황 변화 입력(정정 확인 후 저장·제안서 재생성)"
-              >
+              <button type="button" id="btn-corr">
                 상황 정정</button
               ><input
                 id="chat-input"
@@ -2714,10 +2536,6 @@
         <div id="left-panel" class="fpanel">
           <div class="fhd">
             <span class="clock">진화자원 현황</span
-            ><i
-              class="info b"
-              data-tip="전산 관리자가 관리하는 진화자원 데이터(UC-ADMIN-02)의 헬기·인력·차량 현황입니다. 기본은 「가용만 보기」이며, 끄면 보유·투입·대기까지 모두 표시합니다. 가용 = 투입 + 대기(정비 제외). 자원 수·호출부호는 가상값."
-            ></i
             ><span style="flex: 1"></span
             ><button class="ibtn" id="lp-close">✕</button>
           </div>
@@ -2777,17 +2595,6 @@
             style="width: 1px; height: 18px; background: #cdd3da; margin: 0 4px"
           ></span
           >산불 대응 AI 의사결정 지원 시스템
-          <span
-            style="
-              font-size: 10px;
-              font-weight: 400;
-              color: #777;
-              border: 1px solid #ccc;
-              padding: 0 4px;
-              border-radius: 2px;
-            "
-            >평시 관리</span
-          >
         </div>
         <div class="sclock" title="서버 현재 시각 (한국표준시)">
           현재 시각 <b id="admin-clock" class="num">—</b
@@ -2824,23 +2631,13 @@
       <div id="admin-body">
         <div class="abox">
           <div class="ahd">
-            계정·권한 관리 <span class="uc">UC-ADMIN-01</span
-            ><span class="small muted" style="font-weight: 400"
-              >계정을 발급·회수하고 조작(통합지휘권자)·열람(열람자)·보고(상황
-              보고자) 권한을 나눕니다. 아이디·초기 비밀번호는 시스템이 만들고,
-              관리 권한 계정은 설치 시 사전 발급합니다</span
-            >
+            계정·권한 관리
           </div>
           <div class="abd" id="admin-accounts"></div>
         </div>
         <div class="abox">
           <div class="ahd">
-            진화자원 데이터 관리 <span class="uc">UC-ADMIN-02</span
-            ><span class="small muted" style="font-weight: 400"
-              >보유 헬기·차량·인력을 등록·수정·삭제합니다(필수:
-              구분·명칭(호출부호)·소속·수량). 통합 상황도의 진화자원 현황과 다음
-              대응 제안(S3·S6)의 입력이 됩니다</span
-            >
+            진화자원 데이터 관리
           </div>
           <div class="abd" id="admin-resources"></div>
         </div>

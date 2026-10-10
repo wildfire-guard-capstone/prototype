@@ -28,8 +28,6 @@
   const josa = (w, a, b) => `${w}${hasBatchim(w) ? a : b}`;
   const eul = (w) => josa(w, "을", "를"),
     eun = (w) => josa(w, "은", "는");
-  const tip = (text, cls = "") =>
-    `<i class="info ${cls}" data-tip="${esc(text)}"></i>`;
   const ROLE_LABEL = {
     commander: "통합지휘권자",
     viewer: "열람자",
@@ -2219,7 +2217,7 @@
       n = (I.perimeters || []).length;
     return p
       ? `<b>${perimTag(p)}</b> · ${fmt1(ringAreaHa(p.ring))} ha · 꼭짓점 ${p.ring.length - 1}개 <span class="small muted">(${fmtIso(p.at)} ${esc(p.by || "")} ${esc(p.source || "")}${n > 1 ? ` · 이전 버전 ${n - 1}개 보존` : ""})</span>`
-      : '<span class="muted">미보고 — 초기대응에서는 생략 가능(발화점 기준 예측)</span>';
+      : '<span class="muted">미보고</span>';
   };
   // 산불 날개의 산불 목록: 기본은 접수·진행 중, 「종료」로 바꾸면 종료 처리된 산불
   function renderIncList() {
@@ -2267,10 +2265,6 @@
       b.onclick = openEndModal;
       ac.appendChild(b);
     }
-    if (I.status === "종료")
-      ac.innerHTML = `<span class="small muted">종료된 산불입니다. 제안서·이력은 조회만 가능합니다.</span>`;
-    else if (I.status === "접수")
-      ac.innerHTML = `<span class="small muted">접수 상태 — 상황 보고자가 실측 화선을 처음 보고하면 '진행 중'으로 바뀝니다.</span>`;
   }
   function openEndModal() {
     const I = inc();
@@ -2473,7 +2467,7 @@
     const banner = $("#stage-banner");
     if (run && run.R.stageUp) {
       banner.classList.add("on");
-      banner.innerHTML = `<b>격상 검토 권고</b> — 4요소 중 ${esc(josa(run.R.stageDrivers.join("·"), "이", "가"))} ${esc(run.R.recStage)} 기준입니다. 산림청장과 협의하십시오.${run.R.nextHolder ? ` 격상 시 지휘권자는 <b>${esc(run.R.nextHolder)}</b>, 주민대피 명령권은 시장·군수·구청장에게 남습니다.` : ""}${tip("판단기준 4요소(예상 피해면적·평균풍속·예상 진화시간·시설피해, 표준매뉴얼 p.73) 중 가장 높은 단계로 판정합니다. 예상 진화시간은 상황 정정으로 입력한 값이며 없으면 제외합니다. 구간값은 시행령 별표 기준을 2026 체계에 대응시킨 목업 근사값이고, 발령은 산림청장이 통합지휘본부와 협의해 결정하며 이 화면은 권고만 합니다.", "l")}`;
+      banner.innerHTML = `<b>격상 검토 권고</b> — 4요소 중 ${esc(josa(run.R.stageDrivers.join("·"), "이", "가"))} ${esc(run.R.recStage)} 기준입니다. 산림청장과 협의하십시오.${run.R.nextHolder ? ` 격상 시 지휘권자는 <b>${esc(run.R.nextHolder)}</b>, 주민대피 명령권은 시장·군수·구청장에게 남습니다.` : ""}`;
     } else banner.classList.remove("on");
     const box = $("#cards");
     if (!run) {
@@ -2584,8 +2578,7 @@
           const c = S.evidence[e.key];
           return `<div class="ev-chunk" style="${e.k === k ? "border-color:#e0a325;background:#fffbe6" : ""}"><div class="meta">[${e.k}] ${esc(c.doc)} ${esc(c.page)} · ${esc(c.section)}</div><div>${e.k === k ? `<mark>${esc(c.text)}</mark>` : esc(c.text)}</div></div>`;
         })
-        .join("") +
-      `<div class="small muted">원문 열람은 시연에서 제공하지 않습니다(표준매뉴얼 비공개). 위 텍스트는 쪽수 기준 요약입니다.</div>`;
+        .join("");
     $("#evidence-drawer").classList.add("on");
   }
 
@@ -2595,7 +2588,7 @@
     const runs = st.runs.slice().reverse();
     $("#hist-box summary").textContent = `제안서 버전 이력 (${runs.length})`;
     $("#hist-runs").innerHTML = runs.length
-      ? `<table class="grid"><thead><tr><th>버전</th><th>생성</th><th>기준 화선</th><th>생성 계기</th><th title="즉시/대기/협의/요청">즉/대/협/요</th><th>변경</th><th></th></tr></thead><tbody>${runs.map((r) => `<tr class="${r === st.viewRun ? "sel" : ""}"><td style="text-align:center;white-space:nowrap"><b>${r.id}</b>${r === st.currentRun ? '<br><span class="small muted">최신</span>' : ""}</td><td class="num">${hhmm(r.createdAt)}</td><td style="text-align:center">${r.perim ? "v" + r.perim.version : `v${IGNITION_VER} <span class="small muted">발화점</span>`}</td><td class="small">${esc(r.reason)}</td><td class="num" style="text-align:center">${r.summary["즉시"]}/${r.summary["대기"]}/${r.summary["협의"]}/${r.summary["요청"]}</td><td style="text-align:center">${r.seq > 1 ? `${r.changed.length}건` : "—"}</td><td style="white-space:nowrap"><button data-view="${r.id}">보기</button> <button data-diff="${r.id}">비교</button></td></tr>`).join("")}</tbody></table>`
+      ? `<table class="grid"><thead><tr><th style="width:52px">버전</th><th>생성</th><th style="width:86px"></th></tr></thead><tbody>${runs.map((r) => `<tr class="${r === st.viewRun ? "sel" : ""}"><td style="text-align:center;white-space:nowrap"><b>${r.id}</b>${r === st.currentRun ? '<br><span class="small muted">최신</span>' : ""}</td><td><span class="num">${hhmm(r.createdAt)}</span> ${esc(r.reason)}<br><span class="small">즉시 ${r.summary["즉시"]} · 대기 ${r.summary["대기"]} · 협의 ${r.summary["협의"]} · 요청 ${r.summary["요청"]}${r.seq > 1 ? ` · 변경 ${r.changed.length}건` : ""}</span></td><td style="white-space:nowrap;text-align:center"><button data-view="${r.id}">보기</button> <button data-diff="${r.id}">비교</button></td></tr>`).join("")}</tbody></table>`
       : `<div class="muted small" style="padding:6px">아직 생성된 제안서가 없습니다.</div>`;
     $$("#hist-runs [data-view]").forEach(
       (b) =>
@@ -2680,7 +2673,7 @@
     const b = run && run.blocks.find((x) => x.id === state.chatCtx);
     $("#chat-ctx").innerHTML = b
       ? `항목: <b>${esc(b.name)}</b> — 제안·근거·상황값을 붙여 질문합니다 <a href="#" id="chat-ctx-clear">해제</a>`
-      : "항목 미지정 — 대응제안 항목의 「이 항목 질문」으로 항목을 붙일 수 있습니다";
+      : "";
     const cl = $("#chat-ctx-clear");
     if (cl)
       cl.onclick = (e) => {
@@ -2700,9 +2693,7 @@
         }),
     );
     if (!$("#chat-log").children.length)
-      botSay(
-        "현재 상황·대응 제안·근거를 질문하거나 빠른 질문을 누르십시오. 현장에서 바뀐 사실(예: 박곡리 대피 완료, 헬기 6대 투입)은 「상황 정정」으로 입력하면 확인 후 저장하고 제안서를 다시 만듭니다. 답변은 검색된 표준매뉴얼 근거 안에서만 하며, 근거가 부족한 내용은 표시하지 않고 이벤트 로그에 기록합니다.",
-      );
+      botSay("질문을 입력하거나 빠른 질문을 누르십시오.");
     updateChatBusy();
   }
   function addMsg(cls, html) {
@@ -3312,7 +3303,7 @@
                 .join(" · ")}</span>`
             : ""
         }`
-      : `<span class="muted">${I ? "보고된 실측 화선 없음 — 첫 화선을 저장하면 '진행 중'으로 바뀝니다" : "새 산불 — 화선이 있으면 함께 그려 제출합니다"}</span>`;
+      : `<span class="muted">${I ? "보고된 실측 화선 없음" : "새 산불"}</span>`;
     $("#rep-perim-mode").innerHTML =
       cp && rp.ring && !rp.drawMode
         ? `제출 방식 <label><input type="radio" name="pmode" value="new" ${rp.perimMode === "new" ? "checked" : ""}> 새 버전으로 보고(v${Math.max(...all.map((p) => p.version)) + 1})</label> <label><input type="radio" name="pmode" value="correct" ${rp.perimMode === "correct" ? "checked" : ""}> ${perimTag(cp)} 정정(이전 버전은 '정정됨'으로 보존)</label>`
@@ -3341,8 +3332,8 @@
     const hint = $("#draw-hint");
     hint.classList.toggle("on", rp.drawMode || rp.pickMode);
     hint.textContent = rp.drawMode
-      ? "지도를 눌러 실측 화선 폴리곤의 꼭짓점을 차례로 찍으십시오. 끝나면 「그리기 완료」 (Esc 취소)"
-      : "지도를 눌러 발화 위치를 지정하십시오 (Esc 취소)";
+      ? "지도에서 꼭짓점을 차례로 누르십시오 (Esc 취소)"
+      : "지도에서 발화 위치를 누르십시오 (Esc 취소)";
     drawPreview();
   }
   function loadRepForm(id) {
@@ -3392,10 +3383,7 @@
     if (cp) {
       rp.ring = clone(cp.ring);
       rp.ringSource = `${perimTag(cp)} 불러옴`;
-      toast(
-        `직전 실측 화선 ${perimTag(cp)}을 불러왔습니다. 다시 그리거나 GeoJSON으로 수정한 뒤 저장하면 새 버전으로 제출됩니다.`,
-        4200,
-      );
+      toast(`직전 실측 화선 ${perimTag(cp)}을 불러왔습니다.`);
     } else {
       rp.ring = null;
       rp.drawMode = true;
@@ -3456,7 +3444,7 @@
   function openGeoJsonModal() {
     openModal(
       "GeoJSON 폴리곤 붙여넣기",
-      `<div class="small muted" style="margin-bottom:6px">Polygon 또는 Feature/FeatureCollection(첫 Polygon)의 [경도, 위도] 좌표를 붙여 넣으십시오.</div><textarea id="gj-text" style="width:100%;min-height:160px;font-family:monospace;font-size:11px">${esc(
+      `<textarea id="gj-text" style="width:100%;min-height:160px;font-family:monospace;font-size:11px">${esc(
         JSON.stringify({
           type: "Polygon",
           coordinates: [
@@ -3686,7 +3674,7 @@
   function showIssued(title, a, pw) {
     openModal(
       title,
-      `<table class="grid"><tr><td class="k">아이디</td><td><b>${esc(a.id)}</b></td></tr><tr><td class="k">초기 비밀번호</td><td><b class="num">${esc(pw)}</b></td></tr><tr><td class="k">이름·소속</td><td>${esc(a.name)} · ${esc(a.org || "—")}</td></tr><tr><td class="k">권한</td><td>${roleText(a.role)}</td></tr></table><div class="small muted" style="margin-top:8px">아이디·초기 비밀번호는 시스템이 만들었습니다. 시연용 프로토타입이라 화면에 그대로 표시합니다.</div>`,
+      `<table class="grid"><tr><td class="k">아이디</td><td><b>${esc(a.id)}</b></td></tr><tr><td class="k">초기 비밀번호</td><td><b class="num">${esc(pw)}</b></td></tr><tr><td class="k">이름·소속</td><td>${esc(a.name)} · ${esc(a.org || "—")}</td></tr><tr><td class="k">권한</td><td>${roleText(a.role)}</td></tr></table>`,
       [{ label: "닫기" }],
     );
   }
@@ -4010,16 +3998,6 @@
     }
     enterSession(acc);
     addEvent("시스템", `${acc.id} 로그인(${ROLE_LABEL[acc.role]})`);
-    if (state.role === "reporter")
-      toast(
-        "산불 목록에서 산불을 고르거나 「새 산불 보고」로 발화 정보를 입력하십시오.",
-        3600,
-      );
-    else if (state.role === "commander" && !IS().predicted)
-      toast(
-        "「확산예측」에서 「확산 예측 실행」을 누르면 예측과 진화·대피 대응 제안서가 생성됩니다.",
-        4200,
-      );
   }
   // 권한별 첫 화면: 통합지휘권자·열람자 = 진행 중 산불의 통합 상황도, 상황 보고자 = 상황 입력 화면, 전산 관리자 = 계정·진화자원 데이터 관리
   function enterSession(acc) {
@@ -4062,7 +4040,6 @@
       return;
     }
     enterSession(acc);
-    toast("유효한 세션 토큰이 있어 로그인 없이 진입했습니다.", 3000);
   }
   // A2: 로그아웃하면 세션 토큰을 폐기하고 로그인 화면으로 돌아간다
   function logout(reason) {
@@ -4217,12 +4194,7 @@
       $("#chat-input").focus();
     };
     // 상황 보고자
-    $("#rep-new").onclick = () => {
-      loadRepForm(null);
-      toast(
-        "새 산불의 발화 위치·일시·신고 내용·접수 기록을 입력하십시오. 화선이 있으면 함께 그려 제출합니다.",
-      );
-    };
+    $("#rep-new").onclick = () => loadRepForm(null);
     $("#rep-perim").onclick = startPerimReport;
     $("#ik-add").onclick = addIntakeRow;
     $("#rep-pick").onclick = () => {
@@ -4370,159 +4342,6 @@
 
   window.addEventListener("resize", syncAppLayout);
   syncAppLayout();
-  function setupTooltips() {
-    const tip = document.createElement("div");
-    tip.id = "app-tooltip";
-    tip.setAttribute("role", "tooltip");
-    tip.hidden = true;
-    document.body.appendChild(tip);
-
-    let active = null;
-    let pinned = false;
-
-    function closeTip() {
-      if (active) active.removeAttribute("aria-describedby");
-      active = null;
-      pinned = false;
-      tip.hidden = true;
-    }
-
-    function openTip(icon, pin = false) {
-      if (active && active !== icon) {
-        active.removeAttribute("aria-describedby");
-      }
-
-      active = icon;
-      pinned = pin;
-      tip.textContent = icon.dataset.tip;
-      tip.hidden = false;
-      icon.setAttribute("aria-describedby", tip.id);
-
-      const rect = icon.getBoundingClientRect();
-      const width = tip.offsetWidth;
-      const height = tip.offsetHeight;
-      const margin = 12;
-      const gap = 8;
-
-      const maxLeft = Math.max(margin, window.innerWidth - width - margin);
-
-      const left = Math.max(
-        margin,
-        Math.min(rect.left + rect.width / 2 - width / 2, maxLeft),
-      );
-
-      let top = icon.classList.contains("b")
-        ? rect.bottom + gap
-        : rect.top - height - gap;
-
-      if (top < margin) {
-        top = rect.bottom + gap;
-      }
-
-      const maxTop = Math.max(margin, window.innerHeight - height - margin);
-
-      top = Math.max(margin, Math.min(top, maxTop));
-
-      tip.style.left = `${left}px`;
-      tip.style.top = `${top}px`;
-    }
-
-    // 동적으로 추가되는 아이콘도 키보드로 조작 가능하게 설정
-    function prepareIcons() {
-      document.querySelectorAll(".info[data-tip]").forEach((icon) => {
-        if (!icon.hasAttribute("tabindex")) {
-          icon.tabIndex = 0;
-          icon.setAttribute("role", "button");
-          icon.setAttribute("aria-label", "도움말");
-        }
-      });
-    }
-
-    prepareIcons();
-
-    const observer = new MutationObserver(prepareIcons);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-
-    document.addEventListener("pointerover", (event) => {
-      const icon = event.target.closest(".info[data-tip]");
-      if (icon && !pinned) openTip(icon);
-    });
-
-    document.addEventListener("pointerout", (event) => {
-      if (pinned || !active) return;
-
-      const next = event.relatedTarget;
-
-      if (next && (active.contains(next) || tip.contains(next))) {
-        return;
-      }
-
-      if (active.contains(event.target) || tip.contains(event.target)) {
-        closeTip();
-      }
-    });
-
-    document.addEventListener("click", (event) => {
-      const icon = event.target.closest(".info[data-tip]");
-
-      if (icon) {
-        if (active === icon && pinned) closeTip();
-        else openTip(icon, true);
-      } else if (!tip.contains(event.target)) {
-        closeTip();
-      }
-    });
-
-    document.addEventListener("focusin", (event) => {
-      const icon = event.target.closest(".info[data-tip]");
-      if (icon && !pinned) openTip(icon);
-    });
-
-    document.addEventListener("focusout", (event) => {
-      if (!pinned && event.target === active) closeTip();
-    });
-
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        closeTip();
-        return;
-      }
-
-      const icon = event.target.closest(".info[data-tip]");
-
-      if (icon && (event.key === "Enter" || event.key === " ")) {
-        event.preventDefault();
-
-        if (active === icon && pinned) closeTip();
-        else openTip(icon, true);
-      }
-    });
-
-    // 패널 이동·스크롤 후 이전 위치에 남지 않도록 닫기
-    document.addEventListener("pointerdown", (event) => {
-      if (
-        !event.target.closest(".info[data-tip]") &&
-        !tip.contains(event.target)
-      ) {
-        closeTip();
-      }
-    });
-
-    document.addEventListener(
-      "scroll",
-      (event) => {
-        if (event.target !== tip) closeTip();
-      },
-      true,
-    );
-
-    window.addEventListener("resize", closeTip);
-  }
-
-  setupTooltips();
   window.__mock = {
     state,
     S,
