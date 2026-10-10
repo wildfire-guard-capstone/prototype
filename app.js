@@ -274,8 +274,8 @@
     }
     return r;
   }
-  // 화선 버전(UC-REPORT-01): v1은 발화점(접수 시), 실측 화선은 보고할 때마다 v2, v3 …
-  // 최신 '유효' 실측 화선이 현재 화선이며 예측의 시작점이다(없으면 발화점 = v1)
+  // 화선 버전(UC-REPORT-01): 처음 받은 보고가 v1 — 그 보고에 화선이 있으면 그 화선, 없으면 발화점 자체가 v1
+  // 이후 실측 화선 보고는 v2, v3 …. 최신 '유효' 실측 화선이 현재 화선이며 예측의 시작점이다(없으면 발화점 = v1)
   const curPerim = (i = inc()) => {
     const v = (i.perimeters || []).filter((p) => p.status === "유효");
     return v.length ? v[v.length - 1] : null;
@@ -3607,10 +3607,14 @@
       statusNote = "";
     if (rp.ring) {
       I.perimeters = I.perimeters || [];
+      // 첫 보고에 함께 낸 화선은 v1, 발화점만 보고된 산불의 첫 화선은 v2
       const cp = curPerim(I),
-        nextV =
-          I.perimeters.reduce((m, p) => Math.max(m, p.version), IGNITION_VER) +
-          1;
+        nextV = isNew
+          ? 1
+          : I.perimeters.reduce(
+              (m, p) => Math.max(m, p.version),
+              IGNITION_VER,
+            ) + 1;
       const corrected = cp && rp.perimMode === "correct";
       if (corrected) cp.status = "정정됨";
       const source = /GeoJSON/.test(rp.ringSource || "")
