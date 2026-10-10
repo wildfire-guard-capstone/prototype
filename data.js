@@ -75,38 +75,22 @@ window.SCENARIO = {
       report_text:
         "119 신고 — 괴산리 뒷산 정상부 연기·불꽃 목격, 성묘객 실화 추정(보도)",
       reported_by: "rep01",
-      // P5 기준 위험도 화면 비교용 시연 데이터
+      // P5 기준 위험도 23개 변수 시연값(예측 1회차 → 3.20, 2회차 이후 → 3.51)
       risk_demo_runs: [
         {
-          missing_vars: [],
-          scores: {
-            weather: 4.2,
-            terrain: 3.6,
-            fuel: 3.9,
-            infra: 2.4,
-          },
           values: {
-            weather: "풍속 5.6 m/s · 풍향 240° · 습도 24% · 기온 19℃",
-            terrain: "경사 21° · 남서 사면 · 고도 230 m",
-            fuel: "침엽수림(소나무) · 임목 밀도 높음 · 낙엽층 두꺼움",
-            infra:
-              "취약계층 120명(65세 이상 100명·0~14세 20명) · 최근 화선 기준 가장 가까운 소방서까지 거리 3.2 km",
+            temp: 19, rain: 0, wind: 5.6, rh: 24, pres: 1012, gtemp: 24, rain7: 0.5,
+            elev: 230, slope: 21, aspect: 225, curv: 0.12, tpi: 22, water: 0.35, rough: 46,
+            species: "침엽수림", load: 62, depth: 8, moist: 11, age: 35, cht: 12, cover: 72,
+            vuln: 120, fire_st: 3.2,
           },
         },
         {
-          missing_vars: [],
-          scores: {
-            weather: 4.5,
-            terrain: 3.8,
-            fuel: 4.1,
-            infra: 3.0,
-          },
           values: {
-            weather: "풍속 7.0 m/s · 풍향 250° · 습도 20% · 기온 20℃",
-            terrain: "경사 24° · 남서 사면 · 고도 260 m",
-            fuel: "침엽수림(소나무) · 임목 밀도 높음 · 낙엽층 두꺼움",
-            infra:
-              "취약계층 180명(65세 이상 150명·0~14세 30명) · 최근 화선 기준 가장 가까운 소방서까지 거리 4.1 km",
+            temp: 20.5, rain: 0, wind: 7.0, rh: 20, pres: 1009, gtemp: 27, rain7: 0.5,
+            elev: 260, slope: 24, aspect: 230, curv: 0.15, tpi: 25, water: 0.42, rough: 52,
+            species: "침엽수림", load: 62, depth: 8, moist: 11, age: 35, cht: 12, cover: 72,
+            vuln: 180, fire_st: 4.1,
           },
         },
       ],
@@ -199,7 +183,16 @@ window.SCENARIO = {
       official_stage: "초기대응",
       alert_level: "주의",
       perimeters: [],
-      risk_scores: { weather: 3.9, terrain: 3.2, fuel: 3.5, infra: 2.6 },
+      risk_demo_runs: [
+        {
+          values: {
+            temp: 19, rain: 0, wind: 5.6, rh: 24, pres: 1012, gtemp: 24, rain7: 0.5,
+            elev: 140, slope: 14, aspect: 200, curv: 0.02, tpi: 18, water: 0.3, rough: 34,
+            species: "혼효림", load: 40, depth: 6, moist: 14, age: 28, cht: 14, cover: 55,
+            vuln: 60, fire_st: 2.1,
+          },
+        },
+      ],
       field_report: { expected_suppression_hours: null },
       evacuation_state: {
         order_issued: false,
@@ -233,8 +226,6 @@ window.SCENARIO = {
       official_stage: "초기대응",
       alert_level: "관심",
       perimeters: [],
-      // 종료된 산불의 시연 데이터. 위험도 화면에서는 숫자 대신 종료를 표시한다
-      risk_scores: { weather: 3.4, terrain: 3.0, fuel: 3.2, infra: 2.8 },
       field_report: { expected_suppression_hours: 6 },
       evacuation_state: {
         order_issued: false,
@@ -360,81 +351,71 @@ window.SCENARIO = {
       },
     ],
   },
-  // P5가 겹친 상황을 가정한 공통 위험도 시연 결과
+  // 개발용 병합 시연: P5끼리 겹친 산불은 하나의 산불로 본다(먼저 신고된 산불로 표시, 나머지는 목록에서 빠짐)
+  // 켜면 화선·예측은 두 산불을 함께 그리고 위험도는 합집합 범위의 값 1개(아래 values)를 쓴다
   risk_merge_demo: {
     enabled: false,
     mergedIds: ["F-2025-0322-01", "F-2025-0322-02"],
-    missing_vars: [],
-    scores: {
-      weather: 4.5,
-      terrain: 3.8,
-      fuel: 4.1,
-      infra: 3.0,
-    },
     values: {
-      weather: "풍속 7.0 m/s · 풍향 250° · 습도 20% · 기온 20℃",
-      terrain: "경사 24° · 남서 사면 · 고도 260 m",
-      fuel: "침엽수림(소나무) · 임목 밀도 높음 · 낙엽층 두꺼움",
-      infra:
-        "취약계층 180명(65세 이상 150명·0~14세 30명) · 최근 화선 기준 가장 가까운 소방서까지 거리 4.1 km",
+      temp: 19, rain: 0, wind: 5.6, rh: 24, pres: 1012, gtemp: 24, rain7: 0.5,
+      elev: 230, slope: 21, aspect: 225, curv: 0.12, tpi: 22, water: 0.35, rough: 46,
+      species: "침엽수림", load: 62, depth: 8, moist: 11, age: 35, cht: 12, cover: 72,
+      vuln: 180, fire_st: 2.1,
     },
   },
-  // 산불 위험도(UC-PRED-02): 4요인(기상·지형·연료·인프라) 점수 1~5의 가중평균 → 조건위험도 = 25 × (가중평균 − 1)
-  // 요인 점수는 시연값(실서비스는 25개 변수 → 4요인 점수). 결측 변수는 제외하고 계산하며 목록을 함께 표시한다
-  // 산불별 최대 위험도를 저장해(is_max) 종료 후에도 보여 준다. 사건별 요인 점수는 incidents[].risk_scores가 있으면 그것을 쓴다
-  // 다음 확산예측 1회만 실패시키는 개발용 시연 설정
+  // 개발용: 다음 확산 예측 1회만 실패(mock_fail_next) 또는 대응 제안 생성 실패(mock_fail_proposal_next)
   prediction_demo: {
     mock_fail_next: false,
     mock_fail_proposal_next: false,
   },
+  // 산불 위험도(UC-PRED-02): 예측 1회마다 P5(5시간 누적 예측 범위) 기준으로 1개 계산. 1.00~5.00 숫자만 표시(등급 이름·매핑 없음)
+  // 변수·단위·구간·가중치는 AI Hub 「산불 확산 위험 추론 데이터」 위험도 기준 CSV. 25개 중 경사도_down·도로 및 교통(접근성)을 뺀 23개
+  // 위험도 = Σ(가중치 × 변수 등급 1~5) ÷ Σ가중치(0.94). 화면의 가중치는 0.94로 나눠 다시 맞춘 값(합 1.000)
+  // 등급 구간 mode: le = 차례로 "값 ≤ 경계"이면 1·2·3·4등급, 넘으면 5 / lt = "값 < 경계" / gt = "값 > 경계"(값이 클수록 낮은 등급)
+  // 변수 값은 시연값. 실서비스는 P5 폴리곤과 격자 자료를 겹쳐 계산(취약계층 = 65세 이상 + 0~14세, 소방서 거리는 최근 화선 기준)
   risk_model: {
-    // 등급 실수 경계: 낮음 ≤50 · 보통 50 초과~65 · 높음 65 초과~85 · 매우 높음 85 초과
-    // 개발용: true이면 다음 예측 완료 시 위험도 실패를 한 번 시연
+    // 개발용: true이면 다음 예측 완료 시 위험도 계산 실패를 한 번 시연
     mock_fail_next: false,
-    grades: [
-      { name: "낮음", max: 50 },
-      { name: "보통", max: 65 },
-      { name: "높음", max: 85 },
-      { name: "매우 높음", max: null },
+    // 개발용: 가져오지 못한 변수(키 목록). 계산에서 빼고 표에는 경고로 표시
+    mock_missing_vars: [],
+    axes: [
+      { key: "weather", name: "기상" },
+      { key: "terrain", name: "지형" },
+      { key: "fuel", name: "연료" },
+      { key: "infra", name: "인프라" },
     ],
-    factors: [
-      {
-        key: "weather",
-        name: "기상",
-        weight: 0.372,
-        score: 4.2,
-        vars: "풍속·상대습도·기온·건조특보(기상청 단기예보)",
-        values: null,
-      },
-      {
-        key: "terrain",
-        name: "지형",
-        weight: 0.287,
-        score: 3.6,
-        vars: "경사·사면 방향·고도(DEM 30 m 격자)",
-        values: "경사 21° · 남서 사면 · 고도 230 m",
-      },
-      {
-        key: "fuel",
-        name: "연료",
-        weight: 0.266,
-        score: 3.9,
-        vars: "임상·임목 밀도·낙엽층(임상도)",
-        values: "침엽수림(소나무) · 임목 밀도 높음 · 낙엽층 두꺼움",
-      },
-      {
-        key: "infra",
-        name: "인프라",
-        weight: 0.074,
-        score: 2.4,
-        // 인구·소방서 거리는 화면 시연용 가상 예시
-        vars: "취약계층 수(65세 이상·0~14세)·최근 화선에서 가장 가까운 소방서까지 거리",
-        values:
-          "취약계층 120명(65세 이상 100명·0~14세 20명) · 최근 화선 기준 가장 가까운 소방서까지 거리 3.2 km",
-      },
+    vars: [
+      { key: "temp", axis: "weather", name: "기온", unit: "°C", w: 0.05, mode: "le", t: [10, 20, 27, 33] },
+      { key: "rain", axis: "weather", name: "강수량", unit: "mm", w: 0.04, mode: "gt", t: [10, 5, 1, 0] },
+      { key: "wind", axis: "weather", name: "풍속", unit: "m/s", w: 0.1, mode: "le", t: [3, 6, 10, 15] },
+      { key: "rh", axis: "weather", name: "상대습도", unit: "%", w: 0.07, mode: "gt", t: [45, 30, 20, 10] },
+      { key: "pres", axis: "weather", name: "기압", unit: "hPa", w: 0.02, mode: "gt", t: [1020, 1015, 1005, 1000] },
+      { key: "gtemp", axis: "weather", name: "지면온도", unit: "°C", w: 0.04, mode: "le", t: [15, 25, 35, 45] },
+      { key: "rain7", axis: "weather", name: "7일간 누적 강수량", unit: "mm", w: 0.03, mode: "gt", t: [30, 15, 5, 1] },
+      { key: "elev", axis: "terrain", name: "고도", unit: "m", w: 0.02, mode: "le", t: [100, 200, 400, 1000] },
+      { key: "slope", axis: "terrain", name: "경사도", unit: "°", w: 0.08, mode: "lt", t: [10, 20, 30, 40] },
+      { key: "aspect", axis: "terrain", name: "사면방향", unit: "°", w: 0.06, mode: "aspect" },
+      { key: "curv", axis: "terrain", name: "곡률", unit: "", w: 0.04, mode: "le", t: [-0.3, -0.1, 0.09999, 0.29999] },
+      { key: "tpi", axis: "terrain", name: "지형위치지수", unit: "", w: 0.02, mode: "le", t: [-50, -15, 14.9999, 49.9999] },
+      { key: "water", axis: "terrain", name: "수계와의 거리", unit: "km", w: 0.02, mode: "lt", t: [0.05, 0.2, 0.5, 1] },
+      { key: "rough", axis: "terrain", name: "지형복잡도", unit: "", w: 0.03, mode: "le", t: [20, 40, 60, 80] },
+      { key: "species", axis: "fuel", name: "수종", unit: "", w: 0.04, mode: "cat", c: ["활엽수림", "혼효림", "관목림", "침엽수림", "초지"] },
+      { key: "load", axis: "fuel", name: "산림밀도(연료량)", unit: "t/ha", w: 0.05, mode: "le", t: [10, 30, 50, 80] },
+      { key: "depth", axis: "fuel", name: "지표면 연료깊이", unit: "cm", w: 0.04, mode: "le", t: [2, 5, 10, 20] },
+      { key: "moist", axis: "fuel", name: "수분함량", unit: "%", w: 0.06, mode: "gt", t: [25, 20, 15, 10] },
+      { key: "age", axis: "fuel", name: "평균수령", unit: "년", w: 0.02, mode: "le", t: [5, 15, 30, 60] },
+      { key: "cht", axis: "fuel", name: "수관높이", unit: "m", w: 0.02, mode: "gt", t: [20, 15, 10, 6] },
+      { key: "cover", axis: "fuel", name: "수관피복률", unit: "%", w: 0.02, mode: "le", t: [20, 40, 60, 80] },
+      { key: "vuln", axis: "infra", name: "취약계층 수", unit: "명", w: 0.04, mode: "le", t: [50, 200, 500, 999] },
+      { key: "fire_st", axis: "infra", name: "소방서와의 거리", unit: "km", w: 0.03, mode: "le", t: [3, 7, 12, 20] },
     ],
-    missing_vars: [],
-    note: "기상 값은 기상청 단기예보 캐시, 지형·연료·인프라 값과 요인 점수는 시연값. 시연값 4.2·3.6·3.9·2.4 → 69.1(높음).",
+    // 사건별 시연값이 없을 때 쓰는 변수 값
+    default_values: {
+      temp: 19, rain: 0, wind: 5.6, rh: 24, pres: 1012, gtemp: 24, rain7: 0.5,
+      elev: 230, slope: 21, aspect: 225, curv: 0.12, tpi: 22, water: 0.35, rough: 46,
+      species: "침엽수림", load: 62, depth: 8, moist: 11, age: 35, cht: 12, cover: 72,
+      vuln: 120, fire_st: 3.2,
+    },
   },
 
   // 합성 확산 모델: 확산속도(km/h) = a + b × 풍속(m/s). 발화점을 뒤쪽 초점으로 하는 타원 + 각도 노이즈

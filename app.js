@@ -985,44 +985,128 @@
   }
 
   // ------------------------------------------------------------------ 위험도 (UC-PRED-02)
-  // 조건위험도 = 25 × (요인 점수(1~5) 가중평균 − 1). 기상 0.35 · 지형 0.30 · 연료 0.25 · 인프라 0.10
-  // 등급 실수 경계: 낮음 ≤50 · 보통 50 초과~65 · 높음 65 초과~85 · 매우 높음 85 초과
-  const gradeOf = (score) =>
-    (S.risk_model.grades.find((g) => g.max == null || score <= g.max) || {})
-      .name;
+  // 산불 위험도 = Σ(가중치 × 변수 등급) ÷ Σ가중치, 1.00~5.00. 23개 변수(CSV 25개 중 경사도_down·도로 접근성 제외)를 P5 범위로 계산
+  // 가져오지 못한 변수는 빼고 남은 가중치로 계산한다
   const wx = () => S.weather.series[0];
   const wxText = (w = wx()) =>
     `${dirName(w.wind_dir)}풍 ${w.wind_ms} m/s · 습도 ${w.rh}% · 기온 ${w.temp_c}℃ · 시정 ${w.vis_m >= 1000 ? fmt1(w.vis_m / 1000) + " km" : w.vis_m + " m"}`;
+  // CSV 구간으로 변수 값을 1~5 등급으로 바꾼다
+  function gradeVar(v, x) {
+    if (x == null || x === "") return null;
+    if (v.mode === "cat") {
+      const i = v.c.indexOf(x);
+      return i < 0 ? null : i + 1;
+    }
+    if (v.mode === "aspect") {
+      const a = ((Number(x) % 360) + 360) % 360;
+      if (a > 337.5 || a <= 22.5) return 1;
+      if (a <= 112.5) return 2;
+      if (a > 247.5) return 3;
+      if (a > 167.5 && a <= 202.5) return 5;
+      return 4;
+    }
+    const n = Number(x);
+    for (let i = 0; i < 4; i++) {
+      const t = v.t[i];
+      if (v.mode === "le" ? n <= t : v.mode === "lt" ? n < t : n > t)
+        return i + 1;
+    }
+    return 5;
+  }
+  const varValueText = (v) =>
+    v.value == null
+      ? ""
+      : v.mode === "aspect"
+        ? `${v.value}(${dirName(v.value)})`
+        : typeof v.value === "number" && Math.abs(v.value) >= 1000
+          ? v.value.toLocaleString("ko-KR")
+          : String(v.value);
   function computeRisk(I = inc(), demo = null) {
-    const RM = S.risk_model,
-      sc = demo?.scores || I.risk_scores || {};
-    const fs = RM.factors.map((f) => ({
-      ...f,
-      score: sc[f.key] != null ? sc[f.key] : f.score,
-      values:
-        demo?.values?.[f.key] ??
-        (f.key === "weather"
-          ? `풍속 ${wx().wind_ms} m/s · 풍향 ${wx().wind_dir}° · 습도 ${wx().rh}% · 기온 ${wx().temp_c}℃ · ${S.weather.warnings.join("·")}`
-          : f.values),
-    }));
-    const wsum = fs.reduce((a, f) => a + f.weight, 0);
-    const mean = fs.reduce((a, f) => a + f.score * f.weight, 0) / wsum;
-    const score = mean;
+    const RM = S.risk_model;
+    const values =
+      demo?.values || I.risk_demo_runs?.[0]?.values || RM.default_values;
+    const missing = new Set([
+      ...(demo?.missing_vars || []),
+      ...(RM.mock_missing_vars || []),
+    ]);
+    const wAll = RM.vars.reduce((a, v) => a + v.w, 0);
+    const vars = RM.vars.map((v) => {
+      const value = missing.has(v.key) ? null : (values[v.key] ?? null);
+      return { ...v, value, grade: gradeVar(v, value), wn: v.w / wAll };
+    });
+    const wavg = (vs) => {
+      const ok = vs.filter((v) => v.grade != null);
+      const w = ok.reduce((a, v) => a + v.w, 0);
+      return w ? ok.reduce((a, v) => a + v.w * v.grade, 0) / w : null;
+    };
     return {
-      score,
-      grade: gradeOf(score),
-      mean,
-      factors: fs.map((f) => ({
-        ...f,
-        contrib: Math.round(((f.score * f.weight) / wsum) * 100) / 100,
-      })),
-      missing: demo?.missing_vars ?? RM.missing_vars ?? [],
+      score: wavg(vars),
+      vars,
+      factors: RM.axes.map((ax) => {
+        const vs = vars.filter((v) => v.axis === ax.key);
+        return {
+          key: ax.key,
+          name: ax.name,
+          weight: vs.reduce((a, v) => a + v.wn, 0),
+          score: wavg(vs),
+          n: vs.length,
+        };
+      }),
+      missing: vars.filter((v) => v.grade == null).map((v) => v.name),
     };
   }
-  // 최신 예측에서 저장한 위험도 시연 결과만 조회
+  // 최신 예측에서 저장한 위험도 결과만 조회
   function riskOf(I = inc()) {
     return IS(I.id).latestRisk;
   }
+
+  // ------------------------------------------------------------------ 병합 (P5끼리 겹친 산불은 하나의 산불)
+  // 먼저 신고된 산불로 표시하고 나머지는 목록에서 뺀다. 화선·예측은 함께 그리고 위험도는 1개
+  function mergeGroup() {
+    const md = S.risk_merge_demo;
+    if (!md || md.enabled !== true) return null;
+    const list = (md.mergedIds || [])
+      .map((id) => S.incidents.find((i) => i.id === id))
+      .filter((i) => i && i.status !== "종료")
+      .sort((a, b) => new Date(a.report_time) - new Date(b.report_time));
+    if (list.length < 2) return null;
+    return { primary: list[0], others: list.slice(1) };
+  }
+  const mergedAway = (id) => {
+    const g = mergeGroup();
+    return !!g && g.others.some((i) => i.id === id);
+  };
+  const mergeOthersOf = (I = inc()) => {
+    const g = mergeGroup();
+    return g && g.primary.id === I.id ? g.others : [];
+  };
+  // 여러 폴리곤의 합집합 면적(격자 표본 근사)
+  function unionAreaHa(rings) {
+    if (rings.length === 1) return ringAreaHa(rings[0]);
+    const all = rings.flat();
+    const xs = all.map((p) => p[0]),
+      ys = all.map((p) => p[1]);
+    const x0 = Math.min(...xs),
+      x1 = Math.max(...xs),
+      y0 = Math.min(...ys),
+      y1 = Math.max(...ys);
+    const N = 160;
+    let hit = 0;
+    for (let i = 0; i < N; i++)
+      for (let j = 0; j < N; j++) {
+        const p = [
+          x0 + ((i + 0.5) / N) * (x1 - x0),
+          y0 + ((j + 0.5) / N) * (y1 - y0),
+        ];
+        if (rings.some((r) => pointInRing(p, r))) hit++;
+      }
+    const [ax, ay] = toM(x0, y0),
+      [bx, by] = toM(x1, y1);
+    return (((bx - ax) * (by - ay)) / 1e4) * (hit / (N * N));
+  }
+  // 예측 범위 면적: 병합된 산불이면 합집합
+  const predAreaHa = (st, k) =>
+    unionAreaHa([st.slices[k], ...(st.mergeSlices || []).map((s) => s[k])]);
 
   // ------------------------------------------------------------------ 아이콘 · 지도
   const svg = (paths) => `<svg viewBox="0 0 24 24">${paths}</svg>`;
@@ -1589,10 +1673,20 @@
       st = IS(),
       t = st.t,
       sl = st.slices,
-      ar = actualRing(I);
+      ar = actualRing(I),
+      others = state.role === "reporter" ? [] : mergeOthersOf(I),
+      ms = others.length ? st.mergeSlices || [] : [];
     map
       .getSource("f0")
-      .setData(fc([poly(ar || circleRing(I.ignition, 120), {})]));
+      .setData(
+        fc([
+          poly(ar || circleRing(I.ignition, 120), {}),
+          ...others.map((o) =>
+            poly(actualRing(o) || circleRing(o.ignition, 120), {}),
+          ),
+        ]),
+      );
+    syncMergeMarkers(others);
     if (
       state.role === "reporter" ||
       !st.predicted ||
@@ -1610,35 +1704,57 @@
       );
       return;
     }
+    const sets = [sl, ...ms];
     map
       .getSource("fire-cum")
-      .setData(fc(t === 0 ? [] : [poly(sl[t - 1], { t })]));
+      .setData(fc(t === 0 ? [] : sets.map((s) => poly(s[t - 1], { t }))));
     map
       .getSource("fire-past")
       .setData(
         fc(
-          sl.slice(0, Math.max(0, t - 1)).map((r, i) => poly(r, { t: i + 1 })),
+          sets.flatMap((s) =>
+            s.slice(0, Math.max(0, t - 1)).map((r, i) => poly(r, { t: i + 1 })),
+          ),
         ),
       );
     map
       .getSource("fire-next")
-      .setData(fc(t < 8 ? [poly(sl[t], { t: t + 1 })] : []));
+      .setData(fc(t < 8 ? sets.map((s) => poly(s[t], { t: t + 1 })) : []));
     map
       .getSource("risk")
-      .setData(fc([poly(sl[7], { z: 8 }), poly(sl[4], { z: 5 })]));
+      .setData(
+        fc(sets.flatMap((s) => [poly(s[7], { z: 8 }), poly(s[4], { z: 5 })])),
+      );
+    const inAny = (p, k) => sets.some((s) => pointInRing(p, s[k]));
     S.villages.forEach((v) =>
       state.markers[`v:${v.id}`]
         .getElement()
-        .classList.toggle(
-          "burned",
-          t > 0 && pointInRing([v.lng, v.lat], sl[t - 1]),
-        ),
+        .classList.toggle("burned", t > 0 && inAny([v.lng, v.lat], t - 1)),
     );
     S.shelters.forEach((s) =>
       state.markers[`s:${s.id}`]
         .getElement()
-        .classList.toggle("unsafe", pointInRing([s.lng, s.lat], sl[7])),
+        .classList.toggle("unsafe", inAny([s.lng, s.lat], 7)),
     );
+  }
+  // 병합된 산불의 발화점 표시
+  function syncMergeMarkers(others) {
+    const keep = new Set(others.map((o) => `f0:${o.id}`));
+    Object.keys(state.markers)
+      .filter((k) => k.startsWith("f0:") && !keep.has(k))
+      .forEach((k) => (state.markers[k].getElement().style.display = "none"));
+    others.forEach((o) => {
+      const k = `f0:${o.id}`;
+      if (!state.markers[k])
+        state.markers[k] = new maplibregl.Marker({
+          element: markerEl("f0", "flame", "발화점", ""),
+          anchor: "bottom",
+        })
+          .setLngLat(o.ignition)
+          .addTo(map);
+      state.markers[k].setLngLat(o.ignition);
+      state.markers[k].getElement().style.display = "";
+    });
   }
   const layerOn = (id) => {
     const b = document.querySelector(`.lyr-btn[data-layer="${id}"]`);
@@ -1706,8 +1822,9 @@
     const st = IS(),
       I = inc();
     const showPred = st.predicted && st.slices.length && I.status !== "종료";
+    const ms = mergeOthersOf(I).length ? st.mergeSlices || [] : [];
     const pts = showPred
-      ? st.slices[7]
+      ? [...st.slices[7], ...ms.flatMap((s) => s[7])]
       : actualRing(I) || circleRing(I.ignition, 4000);
     const b = pts.reduce(
       (bb, p) => bb.extend(p),
@@ -1733,6 +1850,8 @@
   }
   function selectIncident(id, fly) {
     pause();
+    const g = mergeGroup();
+    if (g && g.others.some((o) => o.id === id)) id = g.primary.id;
     state.incId = id;
     if (map) {
       state.markers["f0"].setLngLat(inc().ignition);
@@ -1888,6 +2007,10 @@
         // 제안 생성 성공 후 새 예측 상태 반영
         state.wind = nextWind;
         st.slices = nextSlices;
+        // 병합된 산불(P5 겹침)은 함께 예측해 합집합으로 본다
+        st.mergeSlices = mergeOthersOf(I).map((o) =>
+          buildSlices(o.ignition, nextWind, actualRing(o)),
+        );
         st.predicted = true;
         st.stale = false;
         st.predictedAt = nowSim();
@@ -1913,12 +2036,10 @@
 
         const normalDemo = demoRuns[demoIndex] || null;
 
-        // 병합 시연: 설정을 켠 경우에만 공통 결과 사용
+        // 병합된 산불이면 합집합 범위의 위험도 1개
         const mergeDemo = S.risk_merge_demo;
 
-        const useMergedDemo =
-          mergeDemo?.enabled === true &&
-          (mergeDemo.mergedIds || []).includes(I.id);
+        const useMergedDemo = mergeOthersOf(I).length > 0;
 
         const riskDemo = useMergedDemo ? mergeDemo : normalDemo;
 
@@ -1936,7 +2057,7 @@
         state.predicting = false;
         addEvent(
           "예측",
-          `확산 예측 갱신 — 5h ${fmt0(ringAreaHa(st.slices[4]))} ha, 8h ${fmt0(ringAreaHa(st.slices[7]))} ha, 주 방향 ${dirName(state.wind.dir + 180)} · 기준 실측 화선 ${perimTag(perim)}`,
+          `확산 예측 갱신 — 5h ${fmt0(predAreaHa(st, 4))} ha, 8h ${fmt0(predAreaHa(st, 7))} ha, 주 방향 ${dirName(state.wind.dir + 180)} · 기준 실측 화선 ${perimTag(perim)}`,
         );
         setT(0);
         const run = generateProposal("예측 갱신", preparedRun);
@@ -1972,6 +2093,7 @@
     t._h = setTimeout(() => t.classList.remove("on"), ms);
   }
   function openModal(title, bodyHTML, actions) {
+    $("#modal").classList.remove("wide");
     $("#modal-title").textContent = title;
     $("#modal-body").innerHTML = bodyHTML;
     const ac = $("#modal-actions");
@@ -2086,8 +2208,10 @@
   }
   // 산불 목록(UC-SIT-02): 기본은 접수·진행 중 목록, 「종료」로 바꾸면 종료 처리된 산불 목록
   function incidentListHTML(mode, selId) {
-    const list = S.incidents.filter((i) =>
-      mode === "종료" ? i.status === "종료" : i.status !== "종료",
+    const list = S.incidents.filter(
+      (i) =>
+        (mode === "종료" ? i.status === "종료" : i.status !== "종료") &&
+        !mergedAway(i.id),
     );
     const empty =
       mode === "종료"
@@ -2149,7 +2273,7 @@
       <tr><td class="k">진행상태</td><td>${stBadge(I.status)}${I.ended_at ? ` <span class="small muted">종료 ${fmtIso(I.ended_at)}${I.ended_by ? " · " + esc(I.ended_by) : ""}</span>` : ""}</td><td class="k">공식 단계</td><td>${esc(I.official_stage)} · ${esc(I.alert_level)}</td></tr>
       <tr><td class="k">기상</td><td colspan="3">${weatherHTML()}</td></tr>
       <tr><td class="k">실측 화선</td><td colspan="3">${perimHTML(I)}</td></tr>
-      ${I.status === "종료" ? "" : `<tr><td class="k">예측</td><td colspan="3">${st.predicted ? `${fmt0(ringAreaHa(st.slices[4]))} ha(5h) · ${fmt0(ringAreaHa(st.slices[7]))} ha(8h) <span class="small muted">기준 실측 화선 ${st.predPerim ? "v" + st.predPerim.version : "없음(발화점)"}</span>${st.stale ? ' <span class="badge b-대기">재예측 필요</span>' : ""}` : '<span class="muted">예측 전</span>'}</td></tr>`}
+      ${I.status === "종료" ? "" : `<tr><td class="k">예측</td><td colspan="3">${st.predicted ? `${fmt0(predAreaHa(st, 4))} ha(5h) · ${fmt0(predAreaHa(st, 7))} ha(8h) <span class="small muted">기준 실측 화선 ${st.predPerim ? "v" + st.predPerim.version : "없음(발화점)"}</span>${st.stale ? ' <span class="badge b-대기">재예측 필요</span>' : ""}` : '<span class="muted">예측 전</span>'}</td></tr>`}
     </table>`;
     const ac = $("#st-actions");
     ac.innerHTML = "";
@@ -2213,131 +2337,89 @@
         : "";
     $("#playbar").classList.toggle("on", st.predicted && !closed);
   }
-  // UC-PRED-02 산불 위험도: 발화 지점의 기상·지형·연료·인프라 값 → 조건위험도(0~100)·등급·요인별 기여, 산불별 최대 위험도 저장
+  // UC-PRED-02 산불 위험도: 지도 오른쪽 위 네모에 숫자만(통합지휘권자). 산불을 고르지 않았거나 예측 전·종료된 산불이면 숨김
   function renderRisk() {
-    if (!$("#risk-box")) return;
-    if (!canOperate()) {
-      $("#risk-box").innerHTML = "";
+    const box = $("#risk-box"),
+      I = inc(),
+      st = IS();
+    const show =
+      canOperate() && !!I && I.status !== "종료" && st.predicted === true;
+    box.classList.toggle("on", show);
+    if (!show) {
+      showPanel("#risk-pop", false);
       return;
     }
-    const I = inc();
-
-    if (I.status === "종료") {
-      $("#risk-box").innerHTML = `
-    <div style="padding:16px 8px">
-      <span class="badge b-종료">종료</span>
-      <div class="small muted" style="margin-top:8px">
-        종료된 산불은 위험도 숫자를 표시하지 않습니다.
-      </div>
-    </div>
-  `;
+    const rk = riskOf(I),
+      failed = st.riskStatus === "failed" || !rk;
+    box.classList.toggle("fail", failed);
+    box.innerHTML = failed
+      ? `${WARN_SVG}<span>—</span>`
+      : `<span>${rk.score.toFixed(2)}</span>`;
+    if ($("#risk-pop").classList.contains("on")) renderRiskPop();
+  }
+  // 위험도 팝업: 숫자·4요소 점수·가중치 → 「요소별 지표」 팝업(23개 변수 표)
+  function renderRiskPop() {
+    const st = IS(),
+      rk = riskOf();
+    const body = $("#risk-pop-body");
+    if (st.riskStatus === "failed" || !rk) {
+      body.innerHTML = `<div style="padding:12px 4px">${warnHTML("산불 위험도 정보를 가져오지 못했습니다")}</div>`;
       return;
     }
-    if (!IS().predicted) {
-      $("#risk-box").innerHTML = `
-    <div style="padding:16px 8px">
-      <div>예측 실행 후 표시</div>
-      <div class="small muted" style="margin-top:8px">
-        확산예측 탭에서 예측을 실행하면 위험도를 확인할 수 있습니다.
-      </div>
-    </div>
-  `;
-      return;
-    }
-    if (IS().riskStatus === "failed") {
-      $("#risk-box").innerHTML = `
-    <div style="padding:16px 8px">
-      <div
-        role="status"
-        style="display:flex;align-items:center;gap:5px;color:#8a5700"
-      >
-        <svg
-          aria-hidden="true"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          style="flex-shrink:0"
-        >
-          <path
-            d="M12 3 2 21h20L12 3Z"
-            fill="#fff4ce"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M12 9v5"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-          />
-          <circle
-            cx="12"
-            cy="17"
-            r="1"
-            fill="currentColor"
-          />
-        </svg>
-        <span>위험도 계산 실패</span>
-      </div>
-
-      <div class="small muted" style="margin-top:8px">
-        확산예측 탭에서 다시 예측하면 위험도 계산을 재시도합니다.
-      </div>
-
-      <div class="small muted" style="margin-top:8px">
-        ※ 계산 실패 상태 시연
-      </div>
-    </div>
-  `;
-      return;
-    }
-    const rk = riskOf(I);
-    const mergedIds = rk.mergedIds || [];
-
-    const mergedNames = mergedIds.map((id) => {
-      const target = S.incidents.find((item) => item.id === id);
-      return target ? target.name : id;
-    });
-
-    const mergedInfo =
-      mergedIds.length > 1
-        ? `
-      <div class="sec">
-        병합 계산
-        <i
-          class="info l"
-          data-tip="P5 예측 범위가 겹친 산불을 함께 계산한 결과입니다. 대상 산불에는 같은 위험도 R을 표시합니다."
-        ></i>
-      </div>
-      <div class="small" style="margin-bottom:8px">
-        대상 산불: ${mergedNames.map((name) => esc(name)).join(" · ")}
-      </div>
-      <div class="small muted" style="margin-bottom:12px">
-        현재 목업은 P5가 겹친 상황을 시연합니다.
-      </div>
-    `
-        : "";
+    const pos = Math.max(0, Math.min(100, ((rk.score - 1) / 4) * 100));
+    body.innerHTML = `
+      <div class="rk-top"><div class="rk-v">${rk.score.toFixed(2)}</div><div class="rk-scale"><div class="rk-track"><i style="left:${pos}%"></i></div><div class="rk-ticks"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div></div></div>
+      <table class="grid rk-fac"><thead><tr><th>요소</th><th>점수</th><th style="width:62px">가중치</th></tr></thead><tbody>${rk.factors
+        .map(
+          (f) =>
+            `<tr class="clickable" data-axis="${f.key}" title="${esc(f.name)} 변수 보기"><td><b>${esc(f.name)}</b></td><td><span class="rk-bar"><i style="width:${f.score == null ? 0 : (f.score / 5) * 100}%"></i></span><b class="num">${f.score == null ? "—" : f.score.toFixed(2)}</b></td><td class="num" style="text-align:center">${f.weight.toFixed(3)}</td></tr>`,
+        )
+        .join("")}</tbody></table>
+      <table class="grid rk-meta"><tr><td class="k">기준</td><td>화선 ${perimTag(st.predPerim)} · P5</td></tr><tr><td class="k">계산 시각</td><td>${rk.computedAt ? ymdhm(rk.computedAt) : "—"}</td></tr></table>
+      ${rk.missing.length ? `<div style="margin-top:6px">${warnHTML(`가져오지 못한 지표 ${rk.missing.length}개는 빼고 계산했습니다`)}</div>` : ""}
+      <div class="btnrow" style="margin-top:8px"><button id="btn-risk-vars" class="primary" style="flex:1;justify-content:center">요소별 지표</button></div>`;
+    $$("#risk-pop-body .rk-fac tr.clickable").forEach(
+      (tr) => (tr.onclick = () => openRiskVars(tr.dataset.axis)),
+    );
+    $("#btn-risk-vars").onclick = () => openRiskVars();
+  }
+  function openRiskPop() {
     const st = IS();
-
-    const riskMeta = `
-  <div class="small muted" style="margin:6px 0">
-    기준 예측 ${st.predictionSeq}회
-    · 계산 시각 ${st.riskComputedAt ? ymdhm(st.riskComputedAt) : "미확인"}
-  </div>
-`;
-
-    $("#risk-box").innerHTML =
-      `<div class="risk"><div class="gauge"><div class="v">${rk.score.toFixed(2)}</div><div class="k">산불 위험도 R 1.00~5.00</div></div><div class="fac">${rk.factors.map((f) => `<div class="row"><span title="${esc(f.vars)}">${esc(f.name)}</span><span class="bar"><i style="width:${Math.round((f.score / 5) * 100)}%"></i></span><span class="n">${f.score.toFixed(1)}/5 · 가중치 ${f.weight.toFixed(3)}</span></div>`).join("")}</div></div>
-      ${riskMeta}
-      ${mergedInfo}
-      <div class="sec">요인별 입력 값<i class="info l" data-tip="기상·지형·연료·인프라 요인의 입력 정보를 표시합니다."></i></div>
-      <table class="grid">${rk.factors.map((f) => `<tr><td class="k">${esc(f.name)}</td><td class="small">${esc(f.values || f.vars)}</td></tr>`).join("")}</table>
-      <div class="small muted" style="margin-top:6px">
-  현재 목업은 4요인 시연값을 사용합니다.
-  ${rk.missing.length ? `<br>결측 입력: ${esc(rk.missing.join(", "))}` : ""}
-</div>`;
+    if (!$("#risk-box").classList.contains("on")) return;
+    if (st.riskStatus === "failed" || !riskOf())
+      failNotice("산불 위험도 정보를 가져오지 못했습니다.");
+    showPanel("#risk-pop", true);
+    renderRiskPop();
+  }
+  // 요소별 지표: 23개 변수를 기상·지형·연료·인프라 묶음으로(변수명 | 값 | 단위 | 가중치 | 위험도)
+  function openRiskVars(axisKey) {
+    const rk = riskOf();
+    if (!rk) return;
+    const rows = rk.factors
+      .map((f) => {
+        const vs = rk.vars.filter((v) => v.axis === f.key);
+        return (
+          `<tr class="grp" id="rv-${f.key}"><td colspan="3"><b>${esc(f.name)}</b> (${vs.length})</td><td class="num">${f.weight.toFixed(3)}</td><td class="num"><b>${f.score == null ? "—" : f.score.toFixed(2)}</b></td></tr>` +
+          vs
+            .map(
+              (v) =>
+                `<tr><td>${esc(v.name)}</td><td class="num">${v.value == null ? warnHTML("가져오지 못함") : esc(varValueText(v))}</td><td style="text-align:center">${esc(v.unit || "—")}</td><td class="num">${v.wn.toFixed(3)}</td><td class="num"><b>${v.grade ?? "—"}</b></td></tr>`,
+            )
+            .join("")
+        );
+      })
+      .join("");
+    openModal(
+      "요소별 지표",
+      `<table class="grid rv"><thead><tr><th>변수명</th><th>값</th><th style="width:60px">단위</th><th style="width:70px">가중치</th><th style="width:64px">위험도</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3"><b>산불 위험도</b></td><td class="num">1.000</td><td class="num"><b>${rk.score.toFixed(2)}</b></td></tr></tfoot></table>`,
+      [{ label: "닫기" }],
+    );
+    $("#modal").classList.add("wide");
+    $("#modal").scrollTop = 0;
+    if (axisKey) {
+      const g = document.getElementById(`rv-${axisKey}`);
+      if (g) g.scrollIntoView({ block: "start" });
+    }
   }
 
   // ------------------------------------------------------------------ 렌더링: 진화자원 현황(UC-SIT-03)
@@ -2768,15 +2850,13 @@
       }
 
       if (!st.predicted) {
-        botSay(
-          "위험도는 예측 실행 후 표시됩니다. 확산예측 탭에서 예측을 실행해 주세요.",
-        );
+        botSay("산불 위험도는 확산 예측을 실행한 뒤 표시됩니다.");
         return;
       }
 
       if (st.riskStatus === "failed") {
         botSay(
-          "위험도 계산 실패 상태입니다. 다음 예측을 실행하면 다시 시도합니다.",
+          "산불 위험도 정보를 가져오지 못했습니다. 다시 예측하면 다시 계산합니다.",
         );
         return;
       }
@@ -2791,36 +2871,22 @@
       const factorText = rk.factors
         .map(
           (f) =>
-            `${f.name} ${f.score.toFixed(1)}/5` +
+            `${f.name} ${f.score == null ? "—" : f.score.toFixed(2)}` +
             `(가중치 ${f.weight.toFixed(3)})`,
         )
         .join(", ");
 
       const computedAt = rk.computedAt ? ymdhm(rk.computedAt) : "미확인";
 
-      const mergedIds = rk.mergedIds || [];
-
-      const mergedNames = mergedIds.map((id) => {
-        const target = S.incidents.find((item) => item.id === id);
-        return target ? target.name : id;
-      });
-
-      const mergedText =
-        mergedIds.length > 1
-          ? ` 병합 계산 결과이며, 대상 산불은 ${mergedNames.join(" · ")}입니다.`
-          : "";
-
       const missingText = rk.missing?.length
-        ? ` 결측 입력: ${rk.missing.join(", ")}.`
+        ? ` 가져오지 못한 지표: ${rk.missing.join(", ")}.`
         : "";
 
       botSay(
-        `산불 위험도 R은 ${rk.score.toFixed(2)}입니다(1.00~5.00). ` +
-          `기준 예측 ${rk.predictionId}회 · 계산 시각 ${computedAt}. ` +
-          `요인별 점수는 ${factorText}입니다.` +
-          mergedText +
-          missingText +
-          " 현재 목업은 4요인 시연값을 사용합니다.",
+        `산불 위험도는 ${rk.score.toFixed(2)}입니다(1.00~5.00, P5 기준). ` +
+          `계산 시각 ${computedAt}. ` +
+          `요소별 점수는 ${factorText}입니다.` +
+          missingText,
       );
 
       return;
@@ -3856,6 +3922,7 @@
     showPanel("#chat-panel", false);
     toggleLogPanel(false);
     toggleIncDrawer(false);
+    showPanel("#risk-pop", false);
     $("#chat-fab").style.display = "";
     $("#admin-screen").classList.toggle("on", r === "admin");
     document.body.classList.toggle("reporter", r === "reporter");
@@ -4068,6 +4135,8 @@
     $("#btn-log").onclick = () => toggleLogPanel();
     $("#log-close").onclick = () => toggleLogPanel(false);
     $("#wing-fire").onclick = () => toggleIncDrawer();
+    $("#risk-box").onclick = openRiskPop;
+    $("#risk-pop-close").onclick = () => showPanel("#risk-pop", false);
     $("#inc-close").onclick = () => toggleIncDrawer(false);
     $("#btn-resources").onclick = () => {
       showPanel("#left-panel");
@@ -4187,7 +4256,7 @@
         cancelModes();
       }
     });
-    ["#left-panel", "#log-panel", "#chat-panel"].forEach((id) =>
+    ["#left-panel", "#log-panel", "#chat-panel", "#risk-pop"].forEach((id) =>
       makeDraggable($(id)),
     );
   }
@@ -4438,6 +4507,9 @@
     generateProposal,
     computeRisk,
     riskOf,
+    openRiskVars,
+    unionAreaHa,
+    mergeGroup,
     curPerim,
     IS,
     inc,
