@@ -2834,7 +2834,7 @@
 
     setTimeout(() => {
       try {
-        const corr = detectCorrection(q);
+        const corr = detectCorrections(q);
 
         if (corr) {
           proposeCorrection(corr, q);
@@ -3072,18 +3072,20 @@
     if (vill.length && /부상|다쳤|고립|갇/.test(q))
       return { type: "injury", villages: vill.map((v) => v.name) };
     let m;
+    // 「추가」·「더」가 있으면 현재 투입 수에 더한다(없으면 투입 수를 그 값으로)
+    const add = /추가|더\s/.test(q);
     if ((m = q.match(/헬기\D{0,8}(\d+)\s*대/)) && /투입|추가|도착|운용/.test(q))
-      return { type: "heli", n: Number(m[1]) };
+      return { type: "heli", n: Number(m[1]), add };
     if (
       (m = q.match(/(소방차|차량|진화차)\D{0,8}(\d+)\s*대/)) &&
       /투입|추가|도착|배치/.test(q)
     )
-      return { type: "truck", n: Number(m[2]) };
+      return { type: "truck", n: Number(m[2]), add };
     if (
       (m = q.match(/(인력|진화대|진화조)\D{0,8}(\d+)\s*(명|개\s*조|조)/)) &&
       /투입|추가|도착|배치/.test(q)
     )
-      return { type: "crew", n: Number(m[2]), unit: m[3] };
+      return { type: "crew", n: Number(m[2]), unit: m[3], add };
     if ((m = q.match(/예상\s*진화\s*시간\D{0,6}(\d{1,3})\s*시간/)))
       return { type: "eta", n: Number(m[1]) };
     if (/대피\s*명령.{0,6}(발령|내렸|했)/.test(q)) return { type: "order" };
@@ -3103,7 +3105,7 @@
       : c.type === "injury"
         ? c.villages.join("·") + " 부상·고립 보고"
         : c.type === "heli"
-          ? "헬기 투입 " + c.n + "대"
+          ? "헬기 투입 " + c.n + "대" + (c.added ? "(추가 반영)" : "")
           : c.type === "truck"
             ? "소방차 투입 " + c.n + "대"
             : c.type === "crew"
@@ -3117,21 +3119,58 @@
                     : c.type === "stage"
                       ? "공식 단계 " + c.stage
                       : "위기경보 " + c.level;
-  function proposeCorrection(c, q) {
+  // 정정 입력 한 문장에 변화가 여러 개면 절(「했고」·「그리고」·쉼표 등)로 나눠 모두 해석한다
+  function detectCorrections(q) {
+    const parts = q
+      .split(/\s*(?:,|，|그리고|및|했고|하였고|됐고|되었고|하고|이고|;|\.\s)\s*/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const list = [],
+      unparsed = [];
+    let carry = "";
+    for (const part of parts) {
+      const t = carry ? carry + " " + part : part;
+      const c = detectCorrection(t);
+      if (c) {
+        carry = "";
+        const same = list.find((x) => x.type === c.type);
+        if (same && same.villages && c.villages)
+          same.villages = [...new Set([...same.villages, ...c.villages])];
+        else if (same && same.targets && c.targets)
+          same.targets = [...new Set([...same.targets, ...c.targets])];
+        else if (!same) list.push(c);
+        continue;
+      }
+      // 마을 이름만 있는 앞 절은 다음 절과 합쳐 다시 해석(예: "괴산리, 박곡리 대피 완료")
+      if (S.villages.some((v) => t.includes(v.name)) && t.length <= 24) {
+        carry = t;
+        continue;
+      }
+      carry = "";
+      if (!/^(했어|했음|했습니다|완료|요|해|됨|있음)$/.test(part)) unparsed.push(part);
+    }
+    if (carry) unparsed.push(carry);
+    return list.length ? { list, unparsed } : null;
+  }
+  // 자원 투입 정정의 최종 값(「추가」면 현재 값 + 입력 값)
+  function corrTarget(c) {
+    const rs = rsView();
+    if (!c.add) return c.n;
+    if (c.type === "heli") return rs.heli_deployed + c.n;
+    if (c.type === "truck") return rs.fire_trucks_deployed + c.n;
+    if (c.type === "crew")
+      return /조/.test(c.unit)
+        ? S.resources.filter((r) => r.type === "인력" && r.status === "투입").length + c.n
+        : rs.ground_crew_deployed + c.n;
+    return c.n;
+  }
+  const addNote = (c) => (c.add ? ` (추가 ${c.n})` : "");
+  // 정정 한 건 → 확인 카드의 행(대상 · 항목 · 이전 · 변경)
+  function correctionRows(c) {
     const I = inc(),
       es = I.evacuation_state,
       rs = rsView(),
       rows = [];
-    if (I.status === "종료") {
-      botSay("종료된 산불에는 상황 정정을 적용할 수 없습니다.");
-      return;
-    }
-    if (!IS().predicted) {
-      botSay(
-        "아직 예측·제안이 없어 정정할 대상이 없습니다. 먼저 확산 예측을 실행해 주십시오.",
-      );
-      return;
-    }
     const evacState = (n) =>
       es.completed_villages.includes(n)
         ? "대피 완료"
@@ -3152,15 +3191,15 @@
         ]),
       );
     if (c.type === "heli")
-      rows.push(["헬기", "투입 수(대)", rs.heli_deployed, c.n]);
+      rows.push(["헬기", "투입 수(대)", rs.heli_deployed, corrTarget(c) + addNote(c)]);
     if (c.type === "truck")
-      rows.push(["소방차", "투입 수(대)", rs.fire_trucks_deployed, c.n]);
+      rows.push(["소방차", "투입 수(대)", rs.fire_trucks_deployed, corrTarget(c) + addNote(c)]);
     if (c.type === "crew")
       rows.push([
         "지상 진화인력",
         "투입",
         `${rs.ground_crew_deployed}명`,
-        `${c.n}${c.unit}`,
+        `${corrTarget(c)}${c.unit}${addNote(c)}`,
       ]);
     if (c.type === "eta")
       rows.push([
@@ -3189,54 +3228,82 @@
       rows.push([I.name, "공식 대응단계", I.official_stage, c.stage]);
     if (c.type === "alert")
       rows.push([I.name, "위기경보", I.alert_level, c.level]);
-    const R = IS().viewRun && IS().viewRun.R;
-    // E1: 대상이 데이터에 없거나 정정할 수 없는 대상이면 다시 입력받는다
+    return rows;
+  }
+  // 정정 한 건 검사 — 정정할 수 없으면 사유 문장, 문제가 없으면 null
+  function correctionError(c) {
+    const R = IS().viewRun && IS().viewRun.R,
+      rs = rsView();
+    // E1: 대상이 데이터에 없거나 정정할 수 없는 대상
     if (c.type === "completed" && R) {
       const notTarget = c.villages.filter(
         (n) => !R.ordered.find((v) => v.name === n),
       );
-      if (notTarget.length) {
-        botSay(
-          `${eun(joinKo(notTarget))} 대피 대상(위험·잠재 위험구역) 마을이 아니어서 "대피 완료"로 정정할 수 없습니다. 대상을 다시 입력해 주십시오.`,
-        );
-        return;
-      }
+      if (notTarget.length)
+        return `${eun(joinKo(notTarget))} 대피 대상(위험·잠재 위험구역) 마을이 아니어서 "대피 완료"로 정정할 수 없습니다.`;
     }
     // E3: 가용 범위를 넘는 값은 기록하지 않는다
     const crewMax = S.resources.filter(
       (r) => r.type === "인력" && r.status !== "정비",
     );
-    if (c.type === "heli" && c.n > rs.heli_deployed + rs.heli_available) {
-      botSay(
-        `가용 범위 초과, 기록 불가 — 헬기는 투입 ${rs.heli_deployed}대·대기 ${rs.heli_available}대뿐입니다. 아무것도 저장하지 않았습니다.`,
-      );
-      return;
-    }
+    if (c.type === "heli" && corrTarget(c) > rs.heli_deployed + rs.heli_available)
+      return `헬기 ${corrTarget(c)}대는 가용 범위 초과로 기록할 수 없습니다(투입 ${rs.heli_deployed}대·대기 ${rs.heli_available}대).`;
     if (
       c.type === "truck" &&
-      c.n > rs.fire_trucks_deployed + rs.trucks_available
-    ) {
-      botSay(
-        `가용 범위 초과, 기록 불가 — 소방차는 투입 ${rs.fire_trucks_deployed}대·대기 ${rs.trucks_available}대뿐입니다. 아무것도 저장하지 않았습니다.`,
-      );
-      return;
-    }
+      corrTarget(c) > rs.fire_trucks_deployed + rs.trucks_available
+    )
+      return `소방차 ${corrTarget(c)}대는 가용 범위 초과로 기록할 수 없습니다(투입 ${rs.fire_trucks_deployed}대·대기 ${rs.trucks_available}대).`;
     if (
       c.type === "crew" &&
-      c.n >
+      corrTarget(c) >
         (/조/.test(c.unit)
           ? crewMax.length
           : crewMax.reduce((a, r) => a + (Number(r.qty) || 0), 0))
-    ) {
+    )
+      return `지상 진화인력 ${corrTarget(c)}${c.unit}은 가용 범위 초과로 기록할 수 없습니다(${crewMax.length}개 조 ${crewMax.reduce((a, r) => a + (Number(r.qty) || 0), 0)}명).`;
+    return null;
+  }
+  function proposeCorrection(cs, q) {
+    const I = inc();
+    if (I.status === "종료") {
+      botSay("종료된 산불에는 상황 정정을 적용할 수 없습니다.");
+      return;
+    }
+    if (!IS().predicted) {
       botSay(
-        `가용 범위 초과, 기록 불가 — 지상 진화인력은 ${crewMax.length}개 조 ${crewMax.reduce((a, r) => a + (Number(r.qty) || 0), 0)}명뿐입니다. 아무것도 저장하지 않았습니다.`,
+        "아직 예측·제안이 없어 정정할 대상이 없습니다. 먼저 확산 예측을 실행해 주십시오.",
       );
       return;
     }
-    addMsg("sys", "상황 정정으로 판정 — 정정 확인 카드를 엽니다");
+    const ok = [],
+      errs = [];
+    cs.list.forEach((c) => {
+      const e = correctionError(c);
+      if (e) errs.push(e);
+      else ok.push(c);
+    });
+    if (!ok.length) {
+      botSay(
+        `${errs.join(" ")} 대상을 다시 입력해 주십시오. 아무것도 저장하지 않았습니다.`,
+      );
+      return;
+    }
+    const rows = ok.flatMap(correctionRows);
+    const notes = [
+      ...errs.map((e) => `반영하지 않음 — ${e}`),
+      ...(cs.unparsed.length
+        ? [
+            `해석하지 못한 부분 — “${cs.unparsed.join("”, “")}” (반영하지 않음, 필요하면 다시 입력)`,
+          ]
+        : []),
+    ];
+    addMsg(
+      "sys",
+      `상황 정정으로 판정 — 변화 ${ok.length}건의 정정 확인 카드를 엽니다`,
+    );
     openModal(
       "상황 정정 확인",
-      `<div class="small muted" style="margin-bottom:8px">입력: “${esc(q)}”</div><table class="grid"><thead><tr><th>대상</th><th>항목</th><th>이전</th><th>변경</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(String(r[0]))}</td><td>${esc(r[1])}</td><td>${esc(String(r[2]))}</td><td><b>${esc(String(r[3]))}</b></td></tr>`).join("")}</tbody></table><div class="small muted" style="margin-top:8px">확인하면 바뀐 상황 값을 저장하고 이벤트 로그에 기록한 뒤, 예측(P1~P8)은 그대로 둔 채 규칙 판정과 대응 제안만 다시 만들어 새 버전을 저장합니다. 확인 전에는 아무것도 저장하지 않습니다.</div>`,
+      `<div class="small muted" style="margin-bottom:8px">입력: “${esc(q)}” · 해석한 변화 <b>${ok.length}건</b></div><table class="grid"><thead><tr><th>대상</th><th>항목</th><th>이전</th><th>변경</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(String(r[0]))}</td><td>${esc(r[1])}</td><td>${esc(String(r[2]))}</td><td><b>${esc(String(r[3]))}</b></td></tr>`).join("")}</tbody></table>${notes.length ? `<div class="corr-note">${notes.map((n) => `<div>⚠ ${esc(n)}</div>`).join("")}</div>` : ""}<div class="small muted" style="margin-top:8px">확인하면 바뀐 상황 값을 모두 저장하고 이벤트 로그에 기록한 뒤, 예측(P1~P8)은 그대로 둔 채 규칙 판정과 대응 제안만 다시 만들어 새 버전을 저장합니다. 확인 전에는 아무것도 저장하지 않습니다.</div>`,
       [
         {
           label: "취소",
@@ -3248,15 +3315,20 @@
           label: "확인 · 저장 후 재생성",
           cls: "primary",
           onClick: () => {
-            applyCorrection(c);
+            applyCorrection(ok);
           },
         },
       ],
     );
   }
-  function applyCorrection(c) {
+  function applyOneCorrection(c) {
     const I = inc(),
       es = I.evacuation_state;
+    if (c.add) {
+      c.n = corrTarget(c);
+      c.add = false;
+      c.added = true;
+    }
     if (c.type === "completed")
       es.completed_villages = [
         ...new Set([...es.completed_villages, ...c.villages]),
@@ -3287,14 +3359,17 @@
     if (c.type === "stage") I.official_stage = c.stage;
     if (c.type === "alert") I.alert_level = c.level;
     addEvent("정정", corrLabel(c));
+  }
+  function applyCorrection(list) {
+    list.forEach(applyOneCorrection);
     setCorrMode(false);
     const prev = IS().currentRun;
     const run = generateProposal("상황 정정");
     botSay(
-      `상황 정정을 저장했습니다. 제안서 ${run.id} 생성(예측은 그대로) — 바뀐 항목: ${run.changed.length ? run.changed.map((id) => (run.blocks.find((b) => b.id === id) || {}).name).join(", ") : "없음"}. 대응 제안 화면에서 '변경' 태그로 확인할 수 있습니다.`,
+      `상황 정정 ${list.length}건(${list.map(corrLabel).join(", ")})을 저장했습니다. 제안서 ${run.id} 생성(예측은 그대로) — 바뀐 항목: ${run.changed.length ? run.changed.map((id) => (run.blocks.find((b) => b.id === id) || {}).name).join(", ") : "없음"}. 대응 제안 화면에서 '변경' 태그로 확인할 수 있습니다.`,
     );
     if (prev) showDiff(prev, run);
-    if (c.type === "stage" && stageIdx(c.stage) >= 2)
+    if (list.some((c) => c.type === "stage" && stageIdx(c.stage) >= 2))
       toast(
         "공식 단계가 2단계 이상이면 지휘권이 시·도지사로 넘어가 이 화면은 격상·인계 안내만 유효합니다.",
         4000,
