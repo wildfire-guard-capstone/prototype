@@ -2883,15 +2883,48 @@
       ? `<table class="grid"><thead><tr><th style="width:62px">시각</th><th style="width:62px">구분</th><th>내용</th><th style="width:58px">사용자</th></tr></thead><tbody>${ev.map((e) => `<tr class="sys"><td class="num">${esc(e.t)}</td><td style="text-align:center;white-space:nowrap">${esc(e.kind)}</td><td>${esc(e.text)}</td><td class="small" style="text-align:center">${esc(e.user || "—")}</td></tr>`).join("")}</tbody></table>`
       : `<div class="muted small" style="padding:6px">기록된 이벤트가 없습니다.</div>`;
   }
-  const diffCol = (title, b) =>
-    `<div class="col"><h4>${esc(title)}</h4>${b && b.status[0] !== "(없음)" ? `${badges(b.status)}<div style="margin-top:4px">${esc(b.text)}</div>` : '<div class="muted">발동하지 않음(제안서에 없음)</div>'}</div>`;
+  // 낱말 단위 차이(LCS): 이전에만 있는 말은 취소선(빨강), 이후에만 있는 말은 형광(초록)
+  function wordDiff(a, b) {
+    const A = a.split(/\s+/).filter(Boolean),
+      B = b.split(/\s+/).filter(Boolean);
+    const n = A.length,
+      m = B.length,
+      L = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+    for (let i = n - 1; i >= 0; i--)
+      for (let j = m - 1; j >= 0; j--)
+        L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    const outA = [],
+      outB = [];
+    let i = 0,
+      j = 0;
+    while (i < n && j < m) {
+      if (A[i] === B[j]) {
+        outA.push(esc(A[i]));
+        outB.push(esc(B[j]));
+        i++;
+        j++;
+      } else if (L[i + 1][j] >= L[i][j + 1]) outA.push(`<del class="wd">${esc(A[i++])}</del>`);
+      else outB.push(`<ins class="wd">${esc(B[j++])}</ins>`);
+    }
+    while (i < n) outA.push(`<del class="wd">${esc(A[i++])}</del>`);
+    while (j < m) outB.push(`<ins class="wd">${esc(B[j++])}</ins>`);
+    return [outA.join(" "), outB.join(" ")];
+  }
+  const live = (b) => b && b.status[0] !== "(없음)";
+  const diffCol = (title, b, html) =>
+    `<div class="col"><h4>${esc(title)}</h4>${live(b) ? `${badges(b.status)}<div style="margin-top:4px">${html != null ? html : esc(b.text)}</div>` : '<div class="muted">발동하지 않음(제안서에 없음)</div>'}</div>`;
+  // 이전·이후 두 칸(바뀐 낱말 강조)
+  const diffPair = (prev, run, a, b) => {
+    const [ha, hb] = live(a) && live(b) ? wordDiff(a.text, b.text) : [null, null];
+    return `${diffCol(prev.id + " (이전)", a, ha)}${diffCol(run.id + " (이후)", b, hb)}`;
+  };
   // 「제안 변경사항」 창: 직전 버전 대비 바뀐 항목 전체(이전 문장 → 이후 문장)
   function showDiff(prev, run) {
     const rows = run.changed
       .map((id) => {
         const a = prev.blocks.find((b) => b.id === id),
           b = run.blocks.find((x) => x.id === id);
-        return `<div class="chg"><b>${esc(b.name)}</b><div class="diff" style="margin-top:4px">${diffCol(prev.id + " (이전)", a)}${diffCol(run.id + " (이후)", b)}</div></div>`;
+        return `<div class="chg"><b>${esc(b.name)}</b><div class="diff" style="margin-top:4px">${diffPair(prev, run, a, b)}</div></div>`;
       })
       .join("");
     openModal(
@@ -2910,7 +2943,7 @@
       b = run.blocks.find((x) => x.id === id);
     openModal(
       `변경 내용 — ${b.name}`,
-      `<div class="diff">${diffCol(prev.id + " (이전)", a)}${diffCol(run.id + " (이후)", b)}</div>`,
+      `<div class="diff">${diffPair(prev, run, a, b)}</div><div class="small muted" style="margin-top:6px"><del class="wd">빠진 말</del> · <ins class="wd">새로 생긴 말</ins></div>`,
       [{ label: "닫기" }],
     );
   }
