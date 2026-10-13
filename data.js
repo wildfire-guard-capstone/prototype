@@ -361,6 +361,13 @@ window.SCENARIO = {
   risk_merge_demo: {
     enabled: false,
     mergedIds: ["F-2025-0322-01", "F-2025-0322-02"],
+    // 병합 시연(?merge=1)에서만: 두 P5가 실제로 겹치도록 두 번째 산불(가상)을 첫 산불 남쪽 신안리 부근에 둔다
+    demo_fire: {
+      name: "의성 안평면 신안리 산불",
+      addr: "경북 의성군 안평면 신안리 일원",
+      ignition: [128.6125, 36.3445],
+      caller: { name: "박OO(신안리 주민)" },
+    },
     values: {
       temp: 19, rain: 0, wind: 5.6, rh: 24, pres: 1012, gtemp: 24, rain7: 0.5,
       elev: 230, slope: 21, aspect: 225, curv: 0.12, tpi: 22, water: 0.35, rough: 46,

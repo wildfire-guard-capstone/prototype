@@ -1483,6 +1483,23 @@
           },
         },
       ]);
+      // 병합 산불: 두 산불의 P5(5시간 누적 범위)가 겹친 구역 — 병합 판단 근거
+      add("merge-overlap", EMPTY, [
+        {
+          id: "merge-ov-fill",
+          type: "fill",
+          paint: { "fill-color": "#9b30ff", "fill-opacity": 0.38 },
+        },
+        {
+          id: "merge-ov-line",
+          type: "line",
+          paint: {
+            "line-color": "#e2b8ff",
+            "line-width": 2.2,
+            "line-dasharray": [2, 1.5],
+          },
+        },
+      ]);
       add("f0", EMPTY, [
         {
           id: "f0-fill",
@@ -1655,6 +1672,71 @@
       .setLngLat(lngLat)
       .setHTML(`<div class="map-popup">${html}</div>`)
       .addTo(map);
+  // 두 폴리곤의 겹친 부분(Sutherland–Hodgman, 자르는 쪽은 볼록에 가깝다고 본다)
+  function clipRing(subject, clip) {
+    const open = (r) =>
+      r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]
+        ? r.slice(0, -1)
+        : r.slice();
+    const C = open(clip);
+    let out = open(subject);
+    const sgn = C.reduce((a, p, i) => {
+      const q = C[(i + 1) % C.length];
+      return a + (p[0] * q[1] - q[0] * p[1]);
+    }, 0) < 0 ? -1 : 1;
+    const inside = (p, a, b) =>
+      sgn * ((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])) >= 0;
+    const cross = (p, q, a, b) => {
+      const d = (p[0] - q[0]) * (a[1] - b[1]) - (p[1] - q[1]) * (a[0] - b[0]);
+      if (!d) return p;
+      const t = ((p[0] - a[0]) * (a[1] - b[1]) - (p[1] - a[1]) * (a[0] - b[0])) / d;
+      return [p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])];
+    };
+    for (let i = 0; i < C.length && out.length; i++) {
+      const a = C[i],
+        b = C[(i + 1) % C.length],
+        inp = out;
+      out = [];
+      for (let j = 0; j < inp.length; j++) {
+        const P = inp[j],
+          Q = inp[(j + 1) % inp.length],
+          pi = inside(P, a, b),
+          qi = inside(Q, a, b);
+        if (pi) {
+          out.push(P);
+          if (!qi) out.push(cross(P, Q, a, b));
+        } else if (qi) out.push(cross(P, Q, a, b));
+      }
+    }
+    return out.length >= 3 ? [...out, out[0]] : null;
+  }
+  function updateMergeOverlap(sl, ms, show) {
+    if (!map.getSource("merge-overlap")) return;
+    const rings = show
+      ? ms.map((s) => clipRing(sl[4], s[4])).filter(Boolean)
+      : [];
+    map.getSource("merge-overlap").setData(fc(rings.map((r) => poly(r, {}))));
+    let lb = state.markers["merge-lbl"];
+    if (!rings.length) {
+      if (lb) lb.getElement().style.display = "none";
+      return;
+    }
+    const r = rings[0],
+      c = [
+        r.reduce((a, p) => a + p[0], 0) / r.length,
+        r.reduce((a, p) => a + p[1], 0) / r.length,
+      ];
+    if (!lb) {
+      const el = document.createElement("div");
+      el.className = "merge-lbl";
+      el.textContent = "P5 겹침 — 하나의 산불로 병합";
+      lb = state.markers["merge-lbl"] = new maplibregl.Marker({ element: el })
+        .setLngLat(c)
+        .addTo(map);
+    }
+    lb.setLngLat(c);
+    lb.getElement().style.display = layerOn("risk") ? "" : "none";
+  }
   function updateFireLayers() {
     if (!map || !map.getSource("fire-cum")) return;
     const I = inc(),
@@ -1684,6 +1766,7 @@
       ["fire-cum", "fire-past", "fire-next", "risk"].forEach((id) =>
         map.getSource(id).setData(EMPTY),
       );
+      updateMergeOverlap(sl, [], false);
       S.villages.forEach((v) =>
         state.markers[`v:${v.id}`].getElement().classList.remove("burned"),
       );
@@ -1713,6 +1796,7 @@
       .setData(
         fc(sets.flatMap((s) => [poly(s[7], { z: 8 }), poly(s[4], { z: 5 })])),
       );
+    updateMergeOverlap(sl, ms, ms.length > 0);
     const inAny = (p, k) => sets.some((s) => pointInRing(p, s[k]));
     S.villages.forEach((v) =>
       state.markers[`v:${v.id}`]
@@ -1767,7 +1851,10 @@
       ],
       layerOn("fire"),
     );
-    set(["risk-5", "risk-8", "risk-5-line", "risk-8-line"], layerOn("risk"));
+    set(
+      ["risk-5", "risk-8", "risk-5-line", "risk-8-line", "merge-ov-fill", "merge-ov-line"],
+      layerOn("risk"),
+    );
     set(["houses"], layerOn("houses"));
     set(["roads"], layerOn("roads"));
     set(["rail"], layerOn("rail"));
@@ -2325,12 +2412,26 @@
       <tr><td class="k">발생 일시</td><td>${I.start_time ? fmtIso(I.start_time) : '<span class="muted">미확인</span>'}</td><td class="k">신고 접수</td><td>${fmtIso(I.report_time)}</td></tr>
       <tr><td class="k">신고 내용</td><td colspan="3">${esc(I.report_text)}</td></tr>
       <tr><td class="k">신고자</td><td colspan="3">${callerHTML(I)}</td></tr>
+      ${mergeOthersOf(I)
+        .map(
+          (o) =>
+            `<tr class="merged-row"><td class="k">병합된 산불</td><td colspan="3"><b>${esc(o.name)}</b> ${stBadge(o.status)} <a href="#" class="merged-fly" data-id="${esc(o.id)}">발화점 보기</a><br><span class="small">${esc(o.addr)} · 발생 ${o.start_time ? fmtIso(o.start_time) : "미확인"} · 신고 ${fmtIso(o.report_time)} · 신고자 ${callerHTML(o)}</span><br><span class="small muted">두 산불의 P5가 겹쳐 하나의 산불로 보고, 화선·예측을 함께 그리며 위험도는 한 번 계산합니다.</span></td></tr>`,
+        )
+        .join("")}
       <tr><td class="k">접수 기록</td><td colspan="3">${intakeHTML(I)}</td></tr>
       <tr><td class="k">진행상태</td><td>${stBadge(I.status)}${I.ended_at ? ` <span class="small muted">종료 ${fmtIso(I.ended_at)}${I.ended_by ? " · " + esc(I.ended_by) : ""}</span>` : ""}</td><td class="k">공식 단계</td><td>${esc(I.official_stage)} · ${esc(I.alert_level)}</td></tr>
       <tr><td class="k">기상</td><td colspan="3">${weatherHTML()}</td></tr>
       <tr><td class="k">실측 화선</td><td colspan="3">${perimHTML(I)}</td></tr>
       ${I.status === "종료" ? "" : `<tr><td class="k">예측</td><td colspan="3">${st.predicted ? `${fmt0(predAreaHa(st, 4))} ha(5h) · ${fmt0(predAreaHa(st, 7))} ha(8h) <span class="small muted">기준 화선 ${perimTag(st.predPerim)}</span>${st.stale ? ' <span class="badge b-대기">재예측 필요</span>' : ""}` : '<span class="muted">예측 전</span>'}</td></tr>`}
     </table>`;
+    $$("#st-detail .merged-fly").forEach(
+      (a) =>
+        (a.onclick = (e) => {
+          e.preventDefault();
+          const o = S.incidents.find((x) => x.id === a.dataset.id);
+          if (o && map) map.flyTo({ center: o.ignition, zoom: 12.5, duration: 800 });
+        }),
+    );
     const ac = $("#st-actions");
     ac.innerHTML = "";
     // UC-SIT-01: 「종료 처리」는 통합지휘권자에게, '진행 중' 산불에만 보인다(이미 종료된 산불에는 표시하지 않음)
@@ -4572,7 +4673,15 @@
     if (fails.has("riskvars")) S.risk_model.mock_missing_vars = ["gtemp", "rain7"];
     if (fails.has("resources")) S.resources_fetch_status = "failed";
     if (fails.has("chat")) S.chat_demo.mock_fail_next = true;
-    if (q.get("merge") === "1") S.risk_merge_demo.enabled = true;
+    if (q.get("merge") === "1") {
+      const md = S.risk_merge_demo;
+      md.enabled = true;
+      const o = md.demo_fire && S.incidents.find((i) => i.id === md.mergedIds[1]);
+      if (o)
+        Object.assign(o, md.demo_fire, {
+          caller: { ...(o.caller || {}), ...(md.demo_fire.caller || {}) },
+        });
+    }
   })();
 
   // ------------------------------------------------------------------ 시작
