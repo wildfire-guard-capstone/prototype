@@ -2937,7 +2937,7 @@
     const vill = S.villages.find((v) => q.includes(v.name));
     const T = [
       [
-        /왜|먼저|순서|우선/,
+        /순서|먼저|우선|(왜|이유).{0,12}대피|대피.{0,12}(왜|이유)/,
         () => {
           const first = R.ordered[0];
           const v = (vill && R.villages.find((x) => x.id === vill.id)) || first;
@@ -2980,6 +2980,12 @@
         () =>
           `대응단계 판단기준은 피해면적·평균풍속·예상 진화시간·시설피해 4요소이며 하나라도 상위 기준을 충족하면 상위 단계를 검토합니다 [1]. 현재 4요소는 ${R.stageFactors.map((f) => `${f.name} ${f.val}(${f.stage || "판정 제외"})`).join(", ")}이고, 가장 높은 단계인 ${R.recStage}로 판정합니다. 발령은 산림청장이 통합지휘본부와 협의해 하므로 이 화면은 격상 검토를 권고할 뿐입니다 [2].`,
         "S1",
+      ],
+      [
+        /시간대|집중\s*진화|일몰\s*(이후|후)|강풍.{0,6}시간/,
+        () =>
+          `${R.maxWind.t} 전후 풍속이 ${R.maxWind.wind_ms} m/s로 강해지는 시간대에는 헬기 운용이 어려워 지상진화에 집중하고, 일몰(${R.sunset}) 이후 풍속이 잦아드는 시간대에 집중 진화를 지시하도록 제안했습니다 [2]. 현재 풍속 ${state.wind.ms} m/s${R.heliOkNow ? "에서는 헬기 운용이 가능하므로 지금은 가용 헬기를 집중 투입합니다" : "에서는 헬기 운용이 제한됩니다"} [1].`,
+        "S4",
       ],
       [
         /야간|일몰|밤|사전대피/,
@@ -3034,7 +3040,10 @@
         null,
       ],
     ];
-    for (const [re, fn, bid, gap] of T)
+    // 「이 항목 질문」으로 항목을 지정했으면, 질문에 맞는 규칙 가운데 그 항목 규칙을 먼저 고른다
+    const hits = T.filter(([re]) => re.test(q));
+    const pick = (ctx && hits.find((h) => h[2] === ctx)) || hits[0];
+    for (const [re, fn, bid, gap] of pick ? [pick] : [])
       if (re.test(q)) {
         const b = bid || ctx;
         botSay(fn(), b && run.blocks.find((x) => x.id === b) ? b : null);
