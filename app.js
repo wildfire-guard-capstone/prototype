@@ -2318,6 +2318,10 @@
       st.predictFailed && !closed
         ? warnHTML("확산 예측 정보를 가져오지 못했습니다")
         : "";
+    // 버튼이 비활성인 이유를 옆에 작은 글씨로 알린다
+    $("#pred-note").textContent = closed
+      ? "종료된 산불은 확산 예측을 실행할 수 없습니다"
+      : "";
     $("#playbar").classList.toggle("on", st.predicted && !closed);
   }
   // 위험도 구간 색: 4 이상 빨강 · 3 이상 주황 · 2 이상 노랑 · 1 이상 파랑(화면에 보이는 소수 둘째 자리 값 기준)

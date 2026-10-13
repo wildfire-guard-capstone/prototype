@@ -681,6 +681,15 @@
       #pred-warn:empty {
         display: none;
       }
+      /* 비활성 버튼 옆 사유(작은 회색 글씨) */
+      #pred-note {
+        font-size: 11px;
+        color: #666;
+        white-space: nowrap;
+      }
+      #pred-note:empty {
+        display: none;
+      }
       #playbar {
         display: none;
         align-items: center;
@@ -2237,6 +2246,7 @@
           확산 예측 실행
         </button>
         <span id="pred-warn"></span>
+        <span id="pred-note" class="commander-only"></span>
         <div id="playbar">
           <button id="btn-play" class="ibtn primary" title="재생">
             <svg viewBox="0 0 24 24">
