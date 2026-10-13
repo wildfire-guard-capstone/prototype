@@ -2241,6 +2241,12 @@
     );
   }
   // 산불현황: 발생·접수 정보와 진행상태·단계·기상·실측 화선·예측을 한 표로
+  // 신고자 정보(규정 제6조제1항제1호: 신고 기관명, 신고자 성명 및 연락처) — 파악하도록 노력하는 항목이라 비어 있을 수 있다
+  function callerHTML(I) {
+    const c = I.caller || {};
+    const parts = [c.org, c.name, c.phone].map((x) => (x || "").trim()).filter(Boolean);
+    return parts.length ? parts.map(esc).join(" · ") : '<span class="muted">미확인</span>';
+  }
   function renderStatus() {
     const I = inc(),
       st = IS();
@@ -2249,6 +2255,7 @@
       <tr><td class="k">발생 장소</td><td colspan="3">${esc(I.addr)}<br><span class="small muted num">발화 위치 ${I.ignition[1].toFixed(5)}, ${I.ignition[0].toFixed(5)}</span></td></tr>
       <tr><td class="k">발생 일시</td><td>${I.start_time ? fmtIso(I.start_time) : '<span class="muted">미확인</span>'}</td><td class="k">신고 접수</td><td>${fmtIso(I.report_time)}</td></tr>
       <tr><td class="k">신고 내용</td><td colspan="3">${esc(I.report_text)}</td></tr>
+      <tr><td class="k">신고자</td><td colspan="3">${callerHTML(I)}</td></tr>
       <tr><td class="k">접수 기록</td><td colspan="3">${intakeHTML(I)}</td></tr>
       <tr><td class="k">진행상태</td><td>${stBadge(I.status)}${I.ended_at ? ` <span class="small muted">종료 ${fmtIso(I.ended_at)}${I.ended_by ? " · " + esc(I.ended_by) : ""}</span>` : ""}</td><td class="k">공식 단계</td><td>${esc(I.official_stage)} · ${esc(I.alert_level)}</td></tr>
       <tr><td class="k">기상</td><td colspan="3">${weatherHTML()}</td></tr>
@@ -3353,6 +3360,9 @@
       "#rep-geojson",
       "#rep-pick",
       "#ik-add",
+      "#rep-corg",
+      "#rep-cname",
+      "#rep-cphone",
     ].forEach((id) => ($(id).disabled = !!closed));
     const hint = $("#draw-hint");
     hint.classList.toggle("on", rp.drawMode || rp.pickMode);
@@ -3385,6 +3395,10 @@
         ? isoLocal(new Date(I.report_time))
         : isoLocal(nowSim());
     $("#rep-text").value = I ? I.report_text : "";
+    const cl = (I && I.caller) || {};
+    $("#rep-corg").value = cl.org || "";
+    $("#rep-cname").value = cl.name || "";
+    $("#rep-cphone").value = cl.phone || "";
     rp.intake = I ? clone(I.intake || []) : [];
     $$("#rep-panel .invalid").forEach((el) => el.classList.remove("invalid"));
     if (map && state.markers["pick"]) {
@@ -3584,6 +3598,13 @@
     mark("#rep-lng", coordOk, "발화 위치(국내 좌표)");
     $("#rep-lat").classList.toggle("invalid", !coordOk);
     mark("#rep-report", !!report, "신고 접수 일시");
+    const caller = {
+      org: $("#rep-corg").value.trim(),
+      name: $("#rep-cname").value.trim(),
+      phone: $("#rep-cphone").value.trim(),
+    };
+    // 연락처는 비워 둘 수 있으나, 적었다면 숫자·하이픈(가린 번호는 *) 형식만 받는다
+    mark("#rep-cphone", !caller.phone || /^[0-9*][0-9*\- ]{6,}$/.test(caller.phone), "신고자 연락처(숫자·하이픈)");
     const startOk = !start || !report || new Date(start) <= new Date(report);
     mark("#rep-start", startOk, "발생 일시(신고 접수 이후일 수 없음)");
     if (rp.ring && (rp.ring.length < 4 || ringAreaHa(rp.ring) <= 0))
@@ -3626,6 +3647,7 @@
       start_time: start ? new Date(start).toISOString() : null,
       report_time: new Date(report).toISOString(),
       report_text: text || I.report_text || "—",
+      caller,
       intake: clone(rp.intake),
     });
     let perimNote = "",
