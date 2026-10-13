@@ -1491,13 +1491,20 @@
         gap: 3px 6px;
         align-items: center;
       }
+      /* 근거 창: 왼쪽 고정 창 바로 옆(지도 위)에 열어 제안 목록과 나란히 본다 */
       #evidence-drawer {
         position: absolute;
-        inset: 0;
+        top: 0;
+        bottom: 0;
+        left: calc(100% + 1px);
+        width: max(340px, 22vw);
         background: #fff;
         z-index: 3;
         display: none;
         flex-direction: column;
+        border: 1px solid #9aa3ad;
+        border-left: 3px solid #e0a325;
+        box-shadow: 4px 0 14px rgba(0, 0, 0, 0.28);
       }
       #evidence-drawer.on {
         display: flex;
