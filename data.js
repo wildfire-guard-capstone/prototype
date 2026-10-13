@@ -602,7 +602,7 @@ window.SCENARIO = {
   facilities: [
     {
       id: "care1",
-      name: "요양병원(위치 가상)",
+      name: "요양병원",
       type: "care",
       lng: 128.5905,
       lat: 36.38,

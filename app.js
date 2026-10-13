@@ -502,7 +502,7 @@
     R.stageFactors = [
       {
         name: "예상 피해면적(5h)",
-        val: `${fmt1(R.areaP5)} ha`,
+        val: `${fmt0(R.areaP5)} ha`,
         stage: stageByRange(SR.area_ha, R.areaP5),
       },
       {
@@ -630,7 +630,7 @@
         ...(R.powerIn && R.powerIn <= 5 ? [`송전선(P${R.powerIn})`] : []),
       ];
       const g3 = R.housesP5 ? [`주택 ${R.housesP5}동`] : [];
-      const finding = `P5 내 보호대상 ① 인명: ${g1.length ? joinKo(g1) : "없음"} ② 국가기간·군사·국가유산: ${g2.length ? joinKo(g2) : "없음"} ③ 재산: ${g3.length ? g3[0] : "없음"} ④·⑤ 산림: P5 ${fmt1(R.areaP5)} ha`;
+      const finding = `P5 내 보호대상 ① 인명: ${g1.length ? joinKo(g1) : "없음"} ② 국가기간·군사·국가유산: ${g2.length ? joinKo(g2) : "없음"} ③ 재산: ${g3.length ? g3[0] : "없음"} ④·⑤ 산림: P5 ${fmt0(R.areaP5)} ha`;
       const order = [
         g1.length ? joinKo(g1) : null,
         g2.length ? joinKo(g2) : null,
@@ -2504,7 +2504,7 @@
     // 버튼이 비활성인 이유를 옆에 작은 글씨로 알리고, 새 실측 화선이 보고되어 예측이 낡았으면 버튼 옆에 「재예측 필요」를 띄운다
     const cp = curPerim(I);
     $("#pred-note").innerHTML = closed
-      ? "종료된 산불은 확산 예측을 실행할 수 없습니다"
+      ? "종료된 산불은 예측할 수 없습니다"
       : st.stale && !state.predicting
         ? `<span class="badge b-대기">재예측 필요</span> <span class="small">새 실측 화선 ${esc(perimTag(cp))} 보고됨 — 「다시 예측」을 누르십시오</span>`
         : "";
@@ -2682,7 +2682,7 @@
         renderAll();
       };
     const banner = $("#stage-banner");
-    if (run && run.R.stageUp) {
+    if (run && run.R.stageUp && !closed) {
       banner.classList.add("on");
       banner.innerHTML = `<b>격상 검토 권고</b> — 4요소 중 ${esc(josa(run.R.stageDrivers.join("·"), "이", "가"))} ${esc(run.R.recStage)} 기준입니다. 산림청장과 협의하십시오.${run.R.nextHolder ? ` 격상 시 지휘권자는 <b>${esc(run.R.nextHolder)}</b>, 주민대피 명령권은 시장·군수·구청장에게 남습니다.` : ""}`;
     } else banner.classList.remove("on");
@@ -2758,7 +2758,10 @@
         openEvidence(run, c.dataset.b, Number(c.dataset.k));
       }),
     );
-    const s = run.summary;
+    // 구분 건수는 지금 보는 탭(진화/대피)의 발동 항목 기준
+    const s = Object.fromEntries(
+      ["즉시", "대기", "협의", "요청"].map((k) => [k, fired.filter((b) => b.status.includes(k)).length]),
+    );
     $("#prop-summary").innerHTML =
       ["즉시", "대기", "협의", "요청"]
         .map((k) => `<span class="badge b-${k}">${k} ${s[k]}</span>`)
@@ -3745,11 +3748,8 @@
     $("#rep-addr").value = I ? I.addr : "경북 의성군 ";
     $("#rep-lng").value = I ? I.ignition[0] : "";
     $("#rep-lat").value = I ? I.ignition[1] : "";
-    $("#rep-start").value = I
-      ? I.start_time
-        ? isoLocal(new Date(I.start_time))
-        : ""
-      : isoLocal(nowSim());
+    $("#rep-start").value =
+      I && I.start_time ? isoLocal(new Date(I.start_time)) : "";
     $("#rep-report").value =
       I && I.report_time
         ? isoLocal(new Date(I.report_time))
@@ -3809,6 +3809,7 @@
       $("#rep-lat").value = lngLat[1].toFixed(5);
       state.markers["pick"].setLngLat(lngLat);
       state.markers["pick"].getElement().style.display = "";
+      ["#rep-lng", "#rep-lat"].forEach((id) => $(id).classList.remove("invalid"));
       rp.pickMode = false;
       renderReporter();
       toast("발화 위치를 지정했습니다.");
@@ -4702,6 +4703,14 @@
     };
     $("#rep-geojson").onclick = openGeoJsonModal;
     $("#rep-save").onclick = saveReport;
+    // 오류로 표시된 칸은 고쳐 입력하면 표시를 지운다
+    $("#rep-panel").addEventListener("input", (e) => {
+      const el = e.target;
+      if (!el.classList || !el.classList.contains("invalid")) return;
+      el.classList.remove("invalid");
+      if (el.id === "rep-lng" || el.id === "rep-lat")
+        ["#rep-lng", "#rep-lat"].forEach((id) => $(id).classList.remove("invalid"));
+    });
     ["#rep-lng", "#rep-lat"].forEach(
       (id) =>
         ($(id).oninput = () => {
