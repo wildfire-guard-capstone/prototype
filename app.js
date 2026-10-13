@@ -2330,10 +2330,14 @@
       st.predictFailed && !closed
         ? warnHTML("확산 예측 정보를 가져오지 못했습니다")
         : "";
-    // 버튼이 비활성인 이유를 옆에 작은 글씨로 알린다
-    $("#pred-note").textContent = closed
+    // 버튼이 비활성인 이유를 옆에 작은 글씨로 알리고, 새 실측 화선이 보고되어 예측이 낡았으면 버튼 옆에 「재예측 필요」를 띄운다
+    const cp = curPerim(I);
+    $("#pred-note").innerHTML = closed
       ? "종료된 산불은 확산 예측을 실행할 수 없습니다"
-      : "";
+      : st.stale && !state.predicting
+        ? `<span class="badge b-대기">재예측 필요</span> <span class="small">새 실측 화선 ${esc(perimTag(cp))} 보고됨 — 「다시 예측」을 누르십시오</span>`
+        : "";
+    btn.classList.toggle("stale", !!st.stale && !closed && !state.predicting);
     $("#playbar").classList.toggle("on", st.predicted && !closed);
   }
   // 위험도 구간 색: 4 이상 빨강 · 3 이상 주황 · 2 이상 노랑 · 1 이상 파랑(화면에 보이는 소수 둘째 자리 값 기준)
