@@ -1483,6 +1483,19 @@
           },
         },
       ]);
+      // 제안 카드를 펼치면 그 항목의 대상 위치를 하늘색 고리로 강조
+      add("focus", EMPTY, [
+        {
+          id: "focus-ring",
+          type: "circle",
+          paint: {
+            "circle-radius": 17,
+            "circle-color": "rgba(0, 229, 255, 0.12)",
+            "circle-stroke-color": "#00e5ff",
+            "circle-stroke-width": 3,
+          },
+        },
+      ]);
       // 병합 산불: 두 산불의 P5(5시간 누적 범위)가 겹친 구역 — 병합 판단 근거
       add("merge-overlap", EMPTY, [
         {
@@ -2649,6 +2662,7 @@
       .map((s) => `<span class="badge b-${s}">${esc(s)}</span>`)
       .join("");
   function renderProposal() {
+    focusTargets(null); // 카드를 다시 그리면 지도 강조도 지운다
     const st = IS(),
       run = st.viewRun,
       isCurrent = run === st.currentRun,
@@ -2715,9 +2729,15 @@
         ? ""
         : `<div class="muted" style="padding:14px 6px;text-align:center">해당하는 항목이 없습니다.</div>`);
     $$("#cards .card .head, #cards .card .sum").forEach((h) =>
-      h.addEventListener("click", () =>
-        h.closest(".card").classList.toggle("open"),
-      ),
+      h.addEventListener("click", () => {
+        const c = h.closest(".card");
+        c.classList.toggle("open");
+        // 카드를 펼치면 지도에 그 항목의 대상 위치를 강조하고, 접으면 지운다
+        $$("#cards .card.focus").forEach((x) => x !== c && x.classList.remove("focus"));
+        if (c.classList.contains("open"))
+          focusTargets(run.blocks.find((b) => b.id === c.dataset.id), run.R, c);
+        else focusTargets(null);
+      }),
     );
     $$("#cards .chg-tag").forEach((t) =>
       t.addEventListener("click", (e) => {
@@ -2744,6 +2764,47 @@
         .map((k) => `<span class="badge b-${k}">${k} ${s[k]}</span>`)
         .join("") +
       `<span style="margin-left:auto">${state.axis} 7항목 중 발동 ${fired.length}</span>`;
+  }
+  // 제안 항목의 대상 이름 → 지도 위치(마을·대피소·취약시설·국가유산·유관기관). 구역·자원처럼 위치가 없는 대상은 관련 마을로 대신
+  function targetPoints(b, R) {
+    const pools = [S.villages, S.shelters, S.facilities || [], S.agencies || []];
+    const find = (n) => {
+      for (const p of pools) {
+        const o = p.find((x) => x.name === n || n.startsWith(x.name));
+        if (o) return o;
+      }
+      return null;
+    };
+    const out = new Map();
+    (b.targets || [])
+      .flatMap((t) => String(t).split(/[·,]|\s및\s|\s→\s/))
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .forEach((t) => {
+        const o = find(t);
+        if (o) out.set(o.name, [o.lng, o.lat]);
+      });
+    // 구역·주택군처럼 이름이 위치가 아닌 대상은 위험구역 마을을 대상으로 본다
+    if (!out.size && ["S3", "S5", "S7", "E5", "E6"].includes(b.id))
+      R.immediate.forEach((v) => out.set(v.name, [v.lng, v.lat]));
+    return [...out.entries()].map(([name, ll]) => ({ name, ll }));
+  }
+  function focusTargets(b, R, cardEl) {
+    if (!map || !map.getSource("focus")) return;
+    const pts = b ? targetPoints(b, R) : [];
+    map.getSource("focus").setData(fc(pts.map((p) => pt(p.ll, { name: p.name }))));
+    if (cardEl) cardEl.classList.toggle("focus", pts.length > 0);
+    if (!pts.length) return;
+    const xs = pts.map((p) => p.ll[0]),
+      ys = pts.map((p) => p.ll[1]);
+    map.fitBounds(
+      [
+        [Math.min(...xs), Math.min(...ys)],
+        [Math.max(...xs), Math.max(...ys)],
+      ],
+      { padding: { top: 90, bottom: 90, left: 90, right: 120 }, maxZoom: 13.2, duration: 700 },
+    );
+    toast(`지도에 「${b.name}」 대상 ${pts.length}곳을 표시했습니다: ${pts.map((p) => p.name).join(", ")}`, 3000);
   }
   function focusCard(id, open) {
     const st = IS(),
