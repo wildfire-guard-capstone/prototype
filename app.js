@@ -2109,7 +2109,63 @@
   // ------------------------------------------------------------------ 패널 제어
   function showPanel(id, on) {
     const p = $(id);
-    p.classList.toggle("on", on == null ? !p.classList.contains("on") : on);
+    const was = p.classList.contains("on");
+    p.classList.toggle("on", on == null ? !was : on);
+    if (!was && p.classList.contains("on")) autoPlace(p);
+  }
+  // 떠 있는 창을 열 때 이미 열린 창·위험도 네모와 겹치면 지도 안의 빈자리로 옮긴다(사용자가 끌어 옮긴 창은 그대로)
+  function autoPlace(p) {
+    const stage = $("#stage");
+    if (!stage || !stage.contains(p) || p.dataset.dragged) return;
+    // 기본 위치(CSS)에서 다시 잰다
+    p.style.left = p.style.top = p.style.right = p.style.bottom = p.style.height = "";
+    const sr = stage.getBoundingClientRect();
+    const rel = (r) => ({ l: r.left - sr.left, t: r.top - sr.top, w: r.width, h: r.height });
+    const others = [...stage.querySelectorAll(".fpanel.on, #risk-box.on")]
+      .filter((el) => el !== p)
+      .map((el) => rel(el.getBoundingClientRect()));
+    const me = rel(p.getBoundingClientRect());
+    const hit = (a) =>
+      others.some(
+        (b) => a.l < b.l + b.w + 6 && b.l < a.l + a.w + 6 && a.t < b.t + b.h + 6 && b.t < a.t + a.h + 6,
+      );
+    const fits = (a) => a.l >= 4 && a.t >= 4 && a.l + a.w <= sr.width - 4 && a.t + a.h <= sr.height - 4;
+    if (!hit(me)) return;
+    const W = sr.width,
+      H = sr.height,
+      m = 10,
+      minH = Math.min(me.h, 240);
+    // 열린 창 가장자리와 지도 모서리에서 만든 x·y 후보를 조합해 빈자리를 찾는다.
+    // 자리가 모자라면 창 높이를 줄여(최소 240px) 넣고, 기본 위치에 가까운 자리를 먼저 고른다
+    const xs = [m, W - me.w - m, W - me.w - 74],
+      ys = [m, H - me.h - 40];
+    others.forEach((b) => {
+      xs.push(b.l + b.w + m, b.l - me.w - m, b.l);
+      ys.push(b.t, b.t + b.h + m);
+    });
+    const cand = [];
+    xs.forEach((l) =>
+      ys.forEach((t) => {
+        const h = Math.min(me.h, H - t - m);
+        const a = { l, t, w: me.w, h };
+        if (h >= minH && fits(a) && !hit(a))
+          cand.push({ a, cost: Math.hypot(l - me.l, t - me.t) + (me.h - h) * 3 });
+      }),
+    );
+    cand.sort((x, y) => x.cost - y.cost);
+    if (cand.length) {
+      const a = cand[0].a;
+      p.style.right = "auto";
+      p.style.bottom = "auto";
+      p.style.left = Math.round(a.l) + "px";
+      p.style.top = Math.round(a.t) + "px";
+      if (a.h < me.h) p.style.height = Math.round(a.h) + "px";
+      return;
+    }
+    // 빈자리가 없으면 마지막으로 연 창이 앞에 오도록 조금 비켜 둔다
+    p.style.right = "auto";
+    p.style.left = Math.max(m, Math.min(W - me.w - m, me.l + 28)) + "px";
+    p.style.top = Math.max(m, Math.min(H - me.h - m, me.t + 28)) + "px";
   }
   // 왼쪽 고정 창 탭: 산불현황 · 대응제안(통합지휘권자)
   function showTab(tab) {
@@ -2154,6 +2210,7 @@
     hd.addEventListener("mousedown", (e) => {
       if (e.target.closest("button")) return;
       drag = true;
+      panel.dataset.dragged = "1";
       sx = e.clientX;
       sy = e.clientY;
       const r = panel.getBoundingClientRect(),

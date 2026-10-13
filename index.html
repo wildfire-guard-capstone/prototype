@@ -2091,8 +2091,33 @@
         white-space: nowrap;
       }
 
+      /* 1201~1500px: 상단 1줄을 한 줄로 유지하고 간격·글자를 줄임 */
+      @media (max-width: 1500px) and (min-width: 1201px) {
+        #top1 .sys {
+          font-size: 13px;
+        }
+        #top1 .sclock .tz {
+          display: none;
+        }
+        #top2 .lg button {
+          padding: 1px 4px;
+        }
+        #top2 .lg .cap {
+          display: none;
+        }
+        .sw {
+          width: 10px;
+          margin-right: 3px;
+        }
+        #pred-bar #btn-predict {
+          min-width: 0;
+        }
+        #time-slider {
+          width: 90px;
+        }
+      }
       /* 작은 PC 화면: 제목·시각·사용자와 메뉴를 두 줄로 분리 */
-      @media (max-width: 1500px) {
+      @media (max-width: 1200px) {
         #top1 {
           height: auto;
           min-height: 72px;
