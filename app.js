@@ -2332,13 +2332,17 @@
     s == null
       ? "—"
       : `<span class="rk-chip ${riskBand(s)}">${digits ? s.toFixed(digits) : s}</span>`;
-  // UC-PRED-02 산불 위험도: 지도 오른쪽 위 네모에 숫자만(통합지휘권자). 산불을 고르지 않았거나 예측 전·종료된 산불이면 숨김
+  // UC-PRED-02 산불 위험도: 지도 오른쪽 위 네모에 숫자만(통합지휘권자·열람자). 산불을 고르지 않았거나 예측 전·종료된 산불이면 숨김
   function renderRisk() {
     const box = $("#risk-box"),
       I = inc(),
       st = IS();
+    // 열람자도 통합지휘권자가 실행한 예측의 위험도를 본다(계산·재예측은 통합지휘권자만)
     const show =
-      canOperate() && !!I && I.status !== "종료" && st.predicted === true;
+      (canOperate() || state.role === "viewer") &&
+      !!I &&
+      I.status !== "종료" &&
+      st.predicted === true;
     box.classList.toggle("on", show);
     if (!show) {
       showPanel("#risk-pop", false);
