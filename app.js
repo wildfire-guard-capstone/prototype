@@ -4239,9 +4239,28 @@
     enterSession(acc);
   }
   // A2: 로그아웃하면 세션 토큰을 폐기하고 로그인 화면으로 돌아간다
+  // 로그아웃하면 상황 보고자의 입력 상태(발화 위치 표식·그리던 화선·양식)를 지워 다음 사용자 화면에 남지 않게 한다
+  function resetReporterInput() {
+    const rp = state.rep;
+    Object.assign(rp, {
+      editingId: null,
+      pickMode: false,
+      drawMode: false,
+      pts: [],
+      ring: null,
+      ringSource: null,
+      perimMode: "new",
+      intake: [],
+    });
+    if (map && state.markers["pick"])
+      state.markers["pick"].getElement().style.display = "none";
+    if (map && map.getSource("draw")) map.getSource("draw").setData(fc([]));
+    $("#draw-hint").classList.remove("on");
+  }
   function logout(reason) {
     pause();
     cancelModes();
+    resetReporterInput();
     addEvent(
       "시스템",
       reason
