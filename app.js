@@ -3834,31 +3834,73 @@
       `<div class="tot"><span>발급 <b>${cnt((a) => a.status === "발급")}</b></span><span>회수 <b>${cnt((a) => a.status === "회수")}</b></span><span>잠금 <b>${cnt((a) => a.locked)}</b></span>${ISSUABLE.map((r) => `<span>${PERM_LABEL[r]} 권한 <b>${cnt((a) => a.role === r && a.status === "발급")}</b></span>`).join("")}</div>
       <table class="grid"><thead><tr><th>아이디</th><th>이름</th><th>소속</th><th>권한</th><th>상태</th><th>발급일</th><th style="width:196px">관리</th></tr></thead><tbody>${S.accounts.map((a) => `<tr><td><b>${esc(a.id)}</b></td><td>${esc(a.name)}</td><td class="small">${esc(a.org || "—")}</td><td>${a.role === "admin" ? `<span class="small">${roleText("admin")}</span>` : `<select data-role="${a.id}">${roleOpts(a.role)}</select>`}</td><td style="text-align:center"><span class="badge b-${a.status}">${a.status}</span>${a.locked ? ' <span class="badge b-즉시">잠금</span>' : a.failed ? ` <span class="small muted">실패 ${a.failed}회</span>` : ""}</td><td class="num small">${a.issued}</td><td class="actions">${a.status === "발급" && a.id !== state.user ? `<button data-revoke="${a.id}">회수</button> ` : ""}<button data-reissue="${a.id}">재발급</button> ${a.locked || a.failed ? `<button data-unlock="${a.id}">잠금 해제</button> ` : ""}<button data-del="${a.id}">삭제</button></td></tr>`).join("")}</tbody></table>
       <div class="form"><label>이름 *<input id="ac-name" placeholder="예: 통합지휘권자 2"></label><label>소속 *<input id="ac-org" placeholder="예: 의성군"></label><label>권한 *<select id="ac-role"><option value="">선택</option>${roleOpts("")}</select></label><button id="ac-add" class="primary">계정 발급</button></div>`;
-    // A1: 권한 변경은 저장 즉시 적용(로그인 중인 세션 포함)
+    // 발급 상태인 조작 권한(통합지휘권자) 계정이 하나뿐이면 그 계정의 회수·삭제·권한 변경을 막는다(지휘 공백 방지)
+    const lastCommander = (a) =>
+      a.role === "commander" &&
+      a.status === "발급" &&
+      S.accounts.filter((x) => x.role === "commander" && x.status === "발급")
+        .length === 1;
+    const LAST_CMD_MSG =
+      "발급 상태인 조작 권한(통합지휘권자) 계정이 하나뿐이라 처리할 수 없습니다. 새 통합지휘권자 계정을 먼저 발급하십시오.";
+    const confirmAdmin = (title, msg, okLabel, onOk, onCancel) =>
+      openModal(
+        title,
+        `<p>${msg}</p>`,
+        [
+          { label: "취소", onClick: () => onCancel && onCancel() },
+          { label: okLabel, cls: "primary", onClick: onOk },
+        ],
+      );
+    // A1: 권한 변경은 확인 후 저장, 저장 즉시 적용(로그인 중인 세션 포함)
     $$("#admin-accounts [data-role]").forEach(
       (s) =>
         (s.onchange = () => {
           const a = S.accounts.find((x) => x.id === s.dataset.role);
-          const before = roleText(a.role);
-          a.role = s.value;
-          addEvent(
-            "관리",
-            `계정 권한 변경 — ${a.id}: ${before} → ${roleText(a.role)}`,
+          const before = roleText(a.role),
+            to = s.value;
+          if (lastCommander(a) && to !== "commander") {
+            toast(LAST_CMD_MSG, 4200);
+            renderAdmin();
+            return;
+          }
+          confirmAdmin(
+            "권한 변경 확인",
+            `<b>${esc(a.id)}</b>(${esc(a.name)})의 권한을 <b>${esc(before)}</b>에서 <b>${esc(roleText(to))}</b>(으)로 바꿉니다. 저장하면 로그인 중인 세션에도 바로 적용됩니다.`,
+            "변경",
+            () => {
+              a.role = to;
+              addEvent(
+                "관리",
+                `계정 권한 변경 — ${a.id}: ${before} → ${roleText(a.role)}`,
+              );
+              toast(
+                `${a.id} 권한을 ${roleText(a.role)}(으)로 바꿨습니다. 즉시 적용됩니다.`,
+              );
+              renderAdmin();
+            },
+            () => renderAdmin(),
           );
-          toast(
-            `${a.id} 권한을 ${roleText(a.role)}(으)로 바꿨습니다. 즉시 적용됩니다.`,
-          );
-          renderAdmin();
         }),
     );
     $$("#admin-accounts [data-revoke]").forEach(
       (b) =>
         (b.onclick = () => {
           const a = S.accounts.find((x) => x.id === b.dataset.revoke);
-          a.status = "회수";
-          addEvent("관리", `계정 회수 — ${a.id}(${ROLE_LABEL[a.role]})`);
-          toast(`${a.id} 계정을 회수했습니다. 이후 로그인이 막힙니다.`);
-          renderAdmin();
+          if (lastCommander(a)) {
+            toast(LAST_CMD_MSG, 4200);
+            return;
+          }
+          confirmAdmin(
+            "계정 회수 확인",
+            `<b>${esc(a.id)}</b>(${esc(a.name)} · ${esc(roleText(a.role))}) 계정을 회수합니다. 회수하면 이 계정으로 로그인할 수 없고, 다시 쓰려면 재발급해야 합니다.`,
+            "회수",
+            () => {
+              a.status = "회수";
+              addEvent("관리", `계정 회수 — ${a.id}(${ROLE_LABEL[a.role]})`);
+              toast(`${a.id} 계정을 회수했습니다. 이후 로그인이 막힙니다.`);
+              renderAdmin();
+            },
+          );
         }),
     );
     // A2: 재발급 — 초기 비밀번호를 다시 발급(회수된 계정은 다시 발급 상태로)
@@ -3900,9 +3942,21 @@
             toast("로그인 중인 자기 계정은 삭제할 수 없습니다.");
             return;
           }
-          S.accounts.splice(S.accounts.indexOf(a), 1);
-          addEvent("관리", `계정 삭제 — ${a.id}(${ROLE_LABEL[a.role]})`);
-          renderAdmin();
+          if (lastCommander(a)) {
+            toast(LAST_CMD_MSG, 4200);
+            return;
+          }
+          confirmAdmin(
+            "계정 삭제 확인",
+            `<b>${esc(a.id)}</b>(${esc(a.name)} · ${esc(roleText(a.role))}) 계정을 삭제합니다. <b style="color:var(--red)">삭제하면 되돌릴 수 없습니다.</b> 이벤트 로그의 기록은 남습니다.`,
+            "삭제",
+            () => {
+              S.accounts.splice(S.accounts.indexOf(a), 1);
+              addEvent("관리", `계정 삭제 — ${a.id}(${ROLE_LABEL[a.role]})`);
+              toast(`${a.id} 계정을 삭제했습니다.`);
+              renderAdmin();
+            },
+          );
         }),
     );
     $("#ac-add").onclick = () => {
