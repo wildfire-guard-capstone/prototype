@@ -1274,6 +1274,18 @@
       );
       if (map.getLayer("building-3d"))
         map.setLayoutProperty("building-3d", "visibility", "none");
+      // 바탕지도 이름은 한글 이름만 쓴다(영문·한글 두 줄 병기를 없애 라벨 겹침을 줄임)
+      map.getStyle().layers.forEach((l) => {
+        if (l.type !== "symbol") return;
+        const tf = map.getLayoutProperty(l.id, "text-field");
+        if (tf && JSON.stringify(tf).includes("name"))
+          map.setLayoutProperty(l.id, "text-field", [
+            "coalesce",
+            ["get", "name:ko"],
+            ["get", "name:nonlatin"],
+            ["get", "name"],
+          ]);
+      });
       // 의성군 기준: 군 테두리만 노란색 굵은 선으로 표시
       add(
         "admin",

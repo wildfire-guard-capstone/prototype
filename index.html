@@ -662,6 +662,32 @@
         font-size: 11.5px;
         padding: 1px 7px;
       }
+      /* 레이어 버튼의 색 견본 = 지도 표시 색(범례) */
+      .sw {
+        display: inline-block;
+        width: 14px;
+        height: 9px;
+        margin-right: 4px;
+        vertical-align: -1px;
+        border-radius: 2px;
+        box-sizing: border-box;
+      }
+      .lyr-btn.off .sw {
+        opacity: 0.35;
+      }
+      .sw-fire { background: rgba(255, 77, 31, 0.75); border: 2px solid #b3001b; }
+      .sw-risk { background: linear-gradient(90deg, rgba(255, 143, 102, 0.85) 50%, transparent 50%); border: 1.5px dashed #e8b23a; }
+      .sw-village { width: 9px; border-radius: 50%; background: #e0a325; }
+      .sw-house { width: 6px; height: 6px; border-radius: 50%; background: #c58b3a; vertical-align: 0; }
+      .sw-care { width: 9px; border-radius: 50%; background: #d64f86; }
+      .sw-heritage { width: 9px; border-radius: 50%; background: #7b5cd6; }
+      .sw-shelter { width: 9px; border-radius: 50%; background: #2e9e5b; }
+      .sw-water { width: 9px; border-radius: 50%; background: #2f7fe0; }
+      .sw-agency { width: 9px; border-radius: 50%; background: #4b5f8a; }
+      .sw-power { height: 0; border-top: 3px dotted #e8c22a; border-radius: 0; }
+      .sw-road { height: 4px; background: linear-gradient(90deg, #ffb400 33%, #ffd966 33% 66%, #ddd 66%); border-radius: 0; }
+      .sw-rail { height: 0; border-top: 3px dashed #9a9a9a; border-radius: 0; }
+      .sw-route { height: 4px; background: linear-gradient(90deg, #3d8bff 60%, #ff3b3b 60%); border-radius: 0; }
 
       /* 확산 예측 실행 · 시간별 확산 재생 (상단 2줄 오른쪽) */
       #pred-bar {
@@ -2226,28 +2252,28 @@
     <div id="top2">
       <div class="lg">
         <span class="cap">예측</span
-        ><button class="blue lyr-btn" data-layer="fire">화선</button
-        ><button class="blue lyr-btn" data-layer="risk">위험구역</button>
+        ><button class="blue lyr-btn" data-layer="fire" title="실측 화선(진홍 면) · 재생 시각까지의 예측 확산 범위(빨강) · 다음 1시간(주황 점선)"><i class="sw sw-fire"></i>화선</button
+        ><button class="blue lyr-btn" data-layer="risk" title="위험구역 P5(주황 면) · 잠재 위험구역 P8(노랑 점선)"><i class="sw sw-risk"></i>위험구역</button>
       </div>
       <div class="lg">
         <span class="cap">인구</span
-        ><button class="blue lyr-btn" data-layer="villages">마을</button
-        ><button class="blue lyr-btn off" data-layer="houses">주택</button>
+        ><button class="blue lyr-btn" data-layer="villages" title="마을(화선이 닿으면 빨강)"><i class="sw sw-village"></i>마을</button
+        ><button class="blue lyr-btn off" data-layer="houses" title="주택(점)"><i class="sw sw-house"></i>주택</button>
       </div>
       <div class="lg">
         <span class="cap">시설</span
-        ><button class="blue lyr-btn" data-layer="care">취약시설</button
-        ><button class="blue lyr-btn" data-layer="heritage">국가유산</button
-        ><button class="blue lyr-btn" data-layer="shelters">대피소</button
-        ><button class="blue lyr-btn" data-layer="water">담수지</button
-        ><button class="blue lyr-btn" data-layer="power">송전선</button
-        ><button class="blue lyr-btn" data-layer="agencies">유관기관</button>
+        ><button class="blue lyr-btn" data-layer="care" title="요양·장애인 시설 등 취약시설"><i class="sw sw-care"></i>취약시설</button
+        ><button class="blue lyr-btn" data-layer="heritage" title="국가유산(사찰 등)"><i class="sw sw-heritage"></i>국가유산</button
+        ><button class="blue lyr-btn" data-layer="shelters" title="대피소(확산 범위 안이면 빨강)"><i class="sw sw-shelter"></i>대피소</button
+        ><button class="blue lyr-btn" data-layer="water" title="헬기 담수지"><i class="sw sw-water"></i>담수지</button
+        ><button class="blue lyr-btn" data-layer="power" title="송전선(노랑 점선)"><i class="sw sw-power"></i>송전선</button
+        ><button class="blue lyr-btn" data-layer="agencies" title="소방·경찰·군청·한전 등 유관기관"><i class="sw sw-agency"></i>유관기관</button>
       </div>
       <div class="lg">
         <span class="cap">도로</span
-        ><button class="blue lyr-btn" data-layer="roads">도로</button
-        ><button class="blue lyr-btn off" data-layer="rail">철도</button
-        ><button class="blue lyr-btn" data-layer="routes">대피로</button>
+        ><button class="blue lyr-btn" data-layer="roads" title="도로(고속도로 주황 · 주요 도로 노랑 · 기타 흰색)"><i class="sw sw-road"></i>도로</button
+        ><button class="blue lyr-btn off" data-layer="rail" title="철도(회색 점선)"><i class="sw sw-rail"></i>철도</button
+        ><button class="blue lyr-btn" data-layer="routes" title="대피로(파랑) · 진화차량 진입로(흰 점선) · 둘이 겹치는 구간(빨강)"><i class="sw sw-route"></i>대피로</button>
       </div>
       <!-- UC-PRED-01 확산 예측 실행(통합지휘권자) · UC-SIT-03 시간별 확산 재생(통합지휘권자·열람자) -->
       <div id="pred-bar" class="cv-only">
